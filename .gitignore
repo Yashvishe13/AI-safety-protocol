@@ -1,0 +1,20 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+
+# OS files
+.DS_Store
+
+# Third-party checkouts (ignore all except submodules)
+third_party/*
+!third_party/GraCeFul
+!third_party/GraCeFul/**
+
+# Model artifacts and outputs
+outputResults/
+casualCube/
+graceful/
+
