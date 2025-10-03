@@ -2,9 +2,10 @@
 
 Code-aware guardrails for coding/code‑generation systems. Sentinel CodeGuard scans prompts and model outputs for risky content in code comments and string literals, detects unsafe code patterns and potential secrets, and optionally calls a semantic moderation backstop before content is returned.
 
-### What it does
+### What it does (regex-first, no LLM dependency)
 - **Extracts comment and string content** from code (language-aware) to reduce false positives.
 - **Runs specialized detections in parallel**: jailbreak phrasing, prompt-injection, secrets/credentials, unsafe APIs, and obfuscation.
+- **Detects malicious/illegal instructions** via regex patterns (e.g., hacking, RCE, weapon/drug requests).
 - **Optional semantic moderation** via a Llama Guard client (bring your own endpoint).
 - **Applies per-category actions/policy** (block, warn, require review, redact on output).
 - **Caches results** to avoid re-scanning identical inputs.
@@ -23,7 +24,7 @@ Code-aware guardrails for coding/code‑generation systems. Sentinel CodeGuard s
 - `utils.py`: helpers (`md5`, `clip`)
 - `extractors.py`: language-aware comment/string extractors
 - `detectors.py`: regex patterns grouped by concern
-- `client.py`: `LlamaGuardClient` stub (plug in your HTTP call)
+- `client.py`: intentionally minimal; semantic clients are kept in `../sentinel_semantic/`
 - `core.py`: `CodeGuard` engine (extraction → parallel checks → semantic → actions)
 - `firewall.py`: `CodeGenFirewall` wrapper around your model
 - `__init__.py`: exports the public API
@@ -62,7 +63,7 @@ python guard.py
 ```
 
 ### Configuration
-Set via `config.Config` or env variables for the semantic client:
+Set via `config.Config`:
 - `enable_llama_guard`: bool (default: true)
 - `max_parallel_checks`: int (default: 4)
 - `categories`: set of `Category` to enable
@@ -70,8 +71,7 @@ Set via `config.Config` or env variables for the semantic client:
 
 Environment variables:
 - `SENTINEL_LOG_LEVEL`: Python logging level (e.g., INFO, DEBUG)
-- `LLAMAGUARD_API_URL`: URL for your semantic moderation endpoint
-- `LLAMAGUARD_API_KEY`: API key/token for the endpoint
+If you need semantic moderation, see `../sentinel_semantic/README.md`.
 
 ### Customize checks and policy
 - Enable/disable categories: modify `Config.categories`.
