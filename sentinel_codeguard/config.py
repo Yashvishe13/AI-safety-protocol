@@ -11,8 +11,14 @@ class Config:
     description: str = "Code-aware guardrails for coding/code-gen LLM systems"
     level: Level = Level.MODERATE
     categories: Set[Category] = field(default_factory=lambda: {
-        Category.JAILBREAK, Category.PROMPT_INJECTION, Category.MALICIOUS_INSTRUCTIONS,
-        Category.SECRETS, Category.UNSAFE_CODE, Category.OBFUSCATION, Category.LICENSE_RISK
+        Category.JAILBREAK,
+        Category.PROMPT_INJECTION,
+        Category.MALICIOUS_INSTRUCTIONS,
+        Category.ILLEGAL,
+        Category.SECRETS,
+        Category.UNSAFE_CODE,
+        Category.OBFUSCATION,
+        Category.LICENSE_RISK,
     })
     enable_cache: bool = True
     cache_ttl: int = 3600

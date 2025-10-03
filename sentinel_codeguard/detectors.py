@@ -45,4 +45,23 @@ class CodeDetectors:
         r"[А-Яа-яЁёΑ-Ωα-ω]",
     ]
 
+    # Added malicious and illegal activity patterns
+    MALICIOUS_PATTERNS = [
+        r"(?i)\b(hack|exploit|backdoor|rootkit|keylogger|ransomware|botnet|malware|payload|shellcode)\b",
+        r"(?i)\b(sql\s*injection|xss|cross[- ]site\s*scripting|csrf|ssrf|rce|remote\s*code\s*execution)\b",
+        r"(?i)\b(brute[- ]?force|credential\s*stuffing|password\s*spray|privilege\s*escalation)\b",
+        r"(?i)\b(bypass|circumvent|disable|break)\s+(security|authentication|2fa|mfa|firewall|edr|antivirus)\b",
+        r"(?i)(phishing|spear[- ]phish|social\s*engineering)\b",
+        r"(?i)(zero[- ]day|0day)\b",
+        r"(?i)(take\s+over\s+the\s+world|takeover\s+system)\b",
+    ]
+
+    ILLEGAL_PATTERNS = [
+        r"(?i)\b(make|build|manufacture|assemble)\s+(bomb|explosive|weapon|ghost\s*gun|silencer|napalm)\b",
+        r"(?i)\b(buy|sell|ship|traffic)\s+(drugs|fentanyl|cocaine|heroin|mdma|meth|illegal\s*substances)\b",
+        r"(?i)\b(credit\s*card\s*fraud|skimmer|cloning|cvv\s*dumps)\b",
+        r"(?i)\b(counterfeit|fake\s*ids?|passport|forgery)\b",
+        r"(?i)\b(hire\s+a\s*hitman|contract\s*killing)\b",
+    ]
+
 
