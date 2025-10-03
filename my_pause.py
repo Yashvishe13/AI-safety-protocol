@@ -1,26 +1,37 @@
 import time
-from functools import wraps
 
-def run(graph, seconds=30):
+def run(graph, context, seconds=1):
     """
-    Patch a compiled graph so that every step pauses before execution.
+    Run a compiled graph with pauses between steps.
     Usage: 
         graph = builder.compile()
         import my_pause
-        graph = my_pause.run(graph, seconds=5)
+        result = my_pause.run(graph, context=initial_state, seconds=5)
     """
-    # Save original invoke
-    original_invoke = graph.invoke
-
-    @wraps(original_invoke)
-    def paused_invoke(input, *args, **kwargs):
-        # Instead of calling once, we stream step-by-step
-        for event in graph.stream(input, *args, **kwargs):
-            print(f"⏸ Pausing {seconds}s before next node...")
+    print(f"✅ my_pause: Running with {seconds}s pauses between nodes.")
+    
+    final_state = None
+    node_count = 0
+    
+    for event in graph.stream(context):
+        node_count += 1
+        print(f"▶️ Step {node_count}: Processing node(s): {list(event.keys())}")
+        
+        # Update final_state with the latest event data
+        # Each event is a dict with node names as keys and their output states as values
+        for node_name, node_output in event.items():
+            if node_name != '__end__':
+                final_state = node_output
+                print("--------------AGENT OUTPUT------------------")
+                print(final_state)
+                print(f"   └─ {node_name} completed")
+        
+        # Pause before next node
+        if event:
+            print(f"⏸  Pausing {seconds}s before next node...")
             time.sleep(seconds)
-            print(f"▶️ Node finished: {event}")
-        return event  # final state/result
-
-    graph.invoke = paused_invoke
-    print(f"✅ my_pause applied: every node will pause {seconds}s before running.")
-    return graph
+    
+    print(f"✅ Workflow completed after {node_count} steps.")
+    
+    # Return the final state (should be in the same format as graph.invoke())
+    return final_state if final_state is not None else context
