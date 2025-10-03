@@ -3,14 +3,14 @@ Advanced Multi-Agent Orchestrator
 Integrates the new agent framework with existing functionality
 """
 
-from agent_framework import AgentRegistry, AgentWorkflowEngine, AgentContext, BaseAgent
-from specialized_agents import (
+from .agent_framework import AgentRegistry, AgentWorkflowEngine, AgentContext, BaseAgent
+from .specialized_agents import (
     DataQualityAgent,
     VisualizationAgent,
     DataAnalysisPlannerAgent,
     QueryWriterAgent
 )
-from agents import CerebrasAPI, SQLAgent, DataAnalysisAgent, DataIngestionAgent
+from .agents import CerebrasAPI, SQLAgent, DataAnalysisAgent, DataIngestionAgent
 from typing import Dict, Any, List
 import re
 
@@ -25,7 +25,7 @@ class EnhancedDataAnalysisAgent(BaseAgent):
         super().__init__("DataAnalysisAgent")
         self.db_path = db_path
         self.cerebras_api = cerebras_api
-        from agents import DataAnalysisAgent as OriginalAgent
+        from .agents import DataAnalysisAgent as OriginalAgent
         self.original_agent = OriginalAgent(db_path, cerebras_api)
     
     def can_handle(self, task: str, context: AgentContext) -> bool:

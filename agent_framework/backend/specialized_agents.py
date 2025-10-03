@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import sqlite3
 from typing import Dict, List, Any
-from agent_framework import BaseAgent, AgentContext
+from .agent_framework import BaseAgent, AgentContext
 import re
 
 

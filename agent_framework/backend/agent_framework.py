@@ -116,8 +116,9 @@ class AgentWorkflowEngine:
     def __init__(self, registry: AgentRegistry):
         self.registry = registry
         self.logger = get_logger()
+        
     
-    def execute_workflow(self, initial_agent: str, task: str, initial_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def execute_workflow(self, initial_agent: str, task: str, initial_data: Dict[str, Any] = None, *, pause_seconds: int = 0, moderation_hook: Optional[Callable[[str, Any], None]] = None) -> Dict[str, Any]:
         """Execute a workflow starting from an initial agent"""
         # Start execution logging
         execution_id = self.logger.start_execution(task, task)
@@ -144,6 +145,9 @@ class AgentWorkflowEngine:
         try:
             result = current_agent.execute(context)
             context.add_step(initial_agent, "execute", result)
+            # Optional moderation per step
+            if moderation_hook:
+                moderation_hook(initial_agent, result)
             
             # Log agent completion
             self.logger.log_agent_complete(initial_agent, result, success=True)
@@ -152,7 +156,7 @@ class AgentWorkflowEngine:
             raise
         
         # Continue with workflow - agents decide next steps
-        self._continue_workflow(current_agent, context)
+        self._continue_workflow(current_agent, context, pause_seconds=pause_seconds, moderation_hook=moderation_hook)
         
         final_result = {
             "success": True,
@@ -168,7 +172,7 @@ class AgentWorkflowEngine:
         
         return final_result
     
-    def _continue_workflow(self, current_agent: BaseAgent, context: AgentContext):
+    def _continue_workflow(self, current_agent: BaseAgent, context: AgentContext, *, pause_seconds: int = 0, moderation_hook: Optional[Callable[[str, Any], None]] = None):
         """Continue workflow by calling next agents"""
         # Ask current agent what to do next
         next_agents = current_agent.decide_next_agents(context)
@@ -188,8 +192,17 @@ class AgentWorkflowEngine:
                 self.logger.log_agent_start(agent_name, f"Execute via {current_agent.name}", step_number)
                 
                 try:
+                    # Optional pause before agent execution
+                    if pause_seconds and pause_seconds > 0:
+                        import time
+                        print(f"⏸ Pausing {pause_seconds}s before agent '{agent_name}'...")
+                        time.sleep(pause_seconds)
+
                     result = agent.execute(context)
                     context.add_step(agent_name, "execute", result)
+                    # Optional moderation per step
+                    if moderation_hook:
+                        moderation_hook(agent_name, result)
                     
                     # Log agent completion
                     self.logger.log_agent_complete(agent_name, result, success=True)
@@ -199,6 +212,6 @@ class AgentWorkflowEngine:
                     raise
                 
                 # Recursively continue workflow
-                self._continue_workflow(agent, context)
+                self._continue_workflow(agent, context, pause_seconds=pause_seconds, moderation_hook=moderation_hook)
                 break  # Only follow one path for now (can be extended for parallel execution)
 

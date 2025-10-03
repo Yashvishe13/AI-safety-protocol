@@ -352,6 +352,17 @@ Generate queries that cover different aspects of the analysis."""
                     query_summaries.append(summary)
             
             # Step 5: Generate comprehensive analysis report
+            # Build results text separately to avoid backslashes inside f-string expressions (Python restriction)
+            results_text = "\n".join([
+                (
+                    f"Query {i+1}: {summary['query']}\n"
+                    f"Rows returned: {summary['rows']}\n"
+                    f"Statistics:\n{summary['statistics']}\n\n"
+                    f"Sample Data:\n{summary['sample_data']}\n"
+                )
+                for i, summary in enumerate(query_summaries)
+            ])
+
             report_messages = [
                 {
                     "role": "system",
@@ -404,7 +415,7 @@ Write in a professional, clear style. Use actual numbers from the data. Be speci
 
 Query Results:
 
-{chr(10).join([f"Query {i+1}: {summary['query']}\nRows returned: {summary['rows']}\nStatistics:\n{summary['statistics']}\n\nSample Data:\n{summary['sample_data']}\n" for i, summary in enumerate(query_summaries)])}
+{results_text}
 
 Generate a comprehensive analysis report based on this data."""
                 }
