@@ -14,6 +14,9 @@ def run(graph, seconds=30):
     # Save original invoke
     original_invoke = graph.invoke
 
+    # Reuse a single LlamaGuard client to reduce repeated init logs
+    lg = LlamaGuardClient()
+
     @wraps(original_invoke)
     def paused_invoke(input, *args, **kwargs):
         # Instead of calling once, we stream step-by-step
@@ -25,7 +28,7 @@ def run(graph, seconds=30):
             try:
                 scan_and_print(str(event), filename="langgraph_event.txt", direction="output")
                 # Optional: semantic moderation via Llama Guard
-                lg = LlamaGuardClient()
+                print("Calling LlamaGuard classify...", flush=True)
                 resp = lg.classify(text=str(event), policy_hint={
                     "level": "moderate",
                     "categories": [
@@ -35,9 +38,9 @@ def run(graph, seconds=30):
                     "direction": "output",
                     "focus": "code_comments_and_strings",
                 })
-                if resp:
-                    print("=== LlamaGuard ===")
-                    print(resp)
+                if resp is not None:
+                    print("=== LlamaGuard ===", flush=True)
+                    print(resp, flush=True)
             except Exception as _:
                 pass
         return event  # final state/result
