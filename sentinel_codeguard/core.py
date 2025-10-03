@@ -11,14 +11,12 @@ from .config import Config
 from .utils import md5, clip
 from .extractors import COMMENT_STRING_EXTRACTORS, extract_generic_comments_and_strings
 from .detectors import CodeDetectors
-from .client import LlamaGuardClient
 
 
 class CodeGuard:
     def __init__(self, config: Optional[Config] = None):
         self.cfg = config or Config()
         self.cache: Dict[str, Tuple[Result, float]] = {}
-        self.llama = LlamaGuardClient()
 
         self.re_jb = [re.compile(p) for p in CodeDetectors.JAILBREAK_PATTERNS]
         self.re_inj = [re.compile(p) for p in CodeDetectors.PROMPT_INJECTION_PATTERNS]
@@ -94,10 +92,7 @@ class CodeGuard:
             best = flagged_results[0]
             return self._attach_actions(best)
 
-        if self.cfg.enable_llama_guard:
-            lg = self._check_llama_guard(natural_segments, direction)
-            if lg.flagged:
-                return self._attach_actions(lg)
+        # Semantic layer removed from sentinel_codeguard; use sentinel_semantic if desired
 
         return Result(content_preview="", flagged=False)
 
@@ -199,41 +194,7 @@ class CodeGuard:
                     )
         return Result(content_preview="", flagged=False)
 
-    def _check_llama_guard(self, segments: List[str], direction: str) -> Result:
-        if not (self.llama.url and self.llama.key):
-            return Result(content_preview="", flagged=False)
-
-        text = "\n---\n".join(segments)
-        policy_hint = {
-            "level": self.cfg.level.value,
-            "categories": [c.value for c in self.cfg.categories],
-            "direction": direction,
-            "focus": "code_comments_and_strings",
-        }
-        try:
-            resp = self.llama.classify(text=text, policy_hint=policy_hint)
-        except Exception as e:
-            log.error("Llama Guard error: %s", e)
-            resp = None
-
-        if not resp:
-            return Result(content_preview="", flagged=False)
-
-        cats: List[Category] = []
-        for c in resp.get("categories", []):
-            try:
-                cats.append(Category(c))
-            except ValueError:
-                cats.append(Category.CUSTOM)
-
-        return Result(
-            content_preview=clip(text),
-            flagged=bool(resp.get("flagged", False)),
-            categories=cats,
-            reason=resp.get("reason"),
-            confidence=resp.get("confidence"),
-            detection_method="llamaguard",
-        )
+    # Semantic check removed here
 
     def _attach_actions(self, r: Result) -> Result:
         actions: List[str] = []

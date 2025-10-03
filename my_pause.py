@@ -1,6 +1,7 @@
 import time
 from functools import wraps
 from guard import scan_and_print
+from sentinel_semantic.llamaguard_client import LlamaGuardClient
 
 def run(graph, seconds=30):
     """
@@ -23,6 +24,20 @@ def run(graph, seconds=30):
             # Sentinel moderation of each streamed event
             try:
                 scan_and_print(str(event), filename="langgraph_event.txt", direction="output")
+                # Optional: semantic moderation via Llama Guard
+                lg = LlamaGuardClient()
+                resp = lg.classify(text=str(event), policy_hint={
+                    "level": "moderate",
+                    "categories": [
+                        "malicious_instructions", "illegal_activities",
+                        "prompt_injection", "jailbreak_attempt"
+                    ],
+                    "direction": "output",
+                    "focus": "code_comments_and_strings",
+                })
+                if resp:
+                    print("=== LlamaGuard ===")
+                    print(resp)
             except Exception as _:
                 pass
         return event  # final state/result
