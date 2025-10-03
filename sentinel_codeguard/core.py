@@ -25,6 +25,8 @@ class CodeGuard:
         self.re_secret = [re.compile(p) for p in CodeDetectors.SECRET_PATTERNS]
         self.re_unsafe = [re.compile(p) for p in CodeDetectors.UNSAFE_CODE_PATTERNS]
         self.re_obf = [re.compile(p) for p in CodeDetectors.OBFUSCATION_PATTERNS]
+        self.re_mal = [re.compile(p) for p in CodeDetectors.MALICIOUS_PATTERNS]
+        self.re_illegal = [re.compile(p) for p in CodeDetectors.ILLEGAL_PATTERNS]
 
     def scan_prompt(self, text: str, filename: Optional[str] = None) -> Result:
         return self._scan(text, filename=filename, direction="prompt")
@@ -71,6 +73,10 @@ class CodeGuard:
             checks.append(("unsafe", self._check_unsafe_code, Category.UNSAFE_CODE))
         if Category.OBFUSCATION in self.cfg.categories:
             checks.append(("obfuscation", self._check_obfuscation, Category.OBFUSCATION))
+        if Category.MALICIOUS_INSTRUCTIONS in self.cfg.categories:
+            checks.append(("malicious", self._check_malicious, Category.MALICIOUS_INSTRUCTIONS))
+        if Category.ILLEGAL in self.cfg.categories:
+            checks.append(("illegal", self._check_illegal, Category.ILLEGAL))
 
         flagged_results: List[Result] = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.cfg.max_parallel_checks) as ex:
@@ -93,6 +99,34 @@ class CodeGuard:
             if lg.flagged:
                 return self._attach_actions(lg)
 
+        return Result(content_preview="", flagged=False)
+
+    def _check_malicious(self, segments: List[str]) -> Result:
+        for seg in segments:
+            for rx in self.re_mal:
+                if rx.search(seg):
+                    return Result(
+                        content_preview=clip(seg),
+                        flagged=True,
+                        categories=[Category.MALICIOUS_INSTRUCTIONS],
+                        reason="Detected hacking/malicious instruction phrase.",
+                        confidence=0.85,
+                        detection_method="regex:malicious",
+                    )
+        return Result(content_preview="", flagged=False)
+
+    def _check_illegal(self, segments: List[str]) -> Result:
+        for seg in segments:
+            for rx in self.re_illegal:
+                if rx.search(seg):
+                    return Result(
+                        content_preview=clip(seg),
+                        flagged=True,
+                        categories=[Category.ILLEGAL],
+                        reason="Detected potentially illegal activity request.",
+                        confidence=0.85,
+                        detection_method="regex:illegal",
+                    )
         return Result(content_preview="", flagged=False)
 
     def _check_jailbreak(self, segments: List[str]) -> Result:
