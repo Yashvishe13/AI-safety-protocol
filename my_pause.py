@@ -7,6 +7,7 @@ from functools import wraps
 from flask import Flask, request, jsonify
 from guard import scan_and_print
 from sentinel_semantic.llamaguard_client import LlamaGuardClient
+from sentinel_multiagent.agent_validator import sentinel_multiagent
 
 # Import safety checker
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'sentinel_backdoor'))
@@ -22,6 +23,7 @@ API_RECEIVER_URL = "http://localhost:5000/receive"
 
 app = Flask(__name__)
 
+output_summary = ""
 # Endpoint to receive data
 @app.route('/receive', methods=['POST'])
 def receive_data():
@@ -38,6 +40,7 @@ flask_thread.start()
 
 
 def sentinel(value: str, key):
+    global output_summary
     print("---------- L1 - SENTINEL GUARD ----------")
     try:
         res_l1 = scan_and_print(str(value), filename="langgraph_event.txt", direction="output")
@@ -88,16 +91,19 @@ def sentinel(value: str, key):
             "reason": "",
             "category": "HIGH" if safety['label'] == "MALICIOUS" else "LOW" if safety['label'] == "SUSPICIOUS" else "LOW",
         }
-
+    print("---------- L3 - MULTIAGENT VALIDATOR ----------")
+    L3 = sentinel_multiagent(summary=output_summary+str(value))
+    output_summary = L3.summary
+    multiagent_result = {
+        "flagged": L3.label,
+        "reason": L3.reason,
+        "category": L3.category,
+    }
     sentinel_result = {
         "L1": sentinel_l1,
         "llama_guard": llama_guard,
         "L2": backdoor_guard_l2,
-        "L3": {
-            "flagged": False,
-            "reason": "",
-            "category": "",
-        },
+        "L3": multiagent_result,
     }
     return sentinel_result
 
@@ -126,7 +132,6 @@ def run(graph, context, prompt, seconds=1):
 
     final_state = None
     node_count = 0
-
     for event in graph.stream(context):
         node_count += 1
         print(f"▶️ Step {node_count}: Processing node(s): {list(event.keys())}")
@@ -155,7 +160,9 @@ def run(graph, context, prompt, seconds=1):
                             output_summary[key] = display_value
                         else:
                             print("No value to check")
-
+                    
+                    
+                    
                     send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result)
                 else:
                     print(f"📤 OUTPUT: {node_output}")
