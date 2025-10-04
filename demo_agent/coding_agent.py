@@ -9,7 +9,7 @@ from typing import TypedDict, Annotated, Sequence
 from langgraph.graph import StateGraph, END
 from cerebras.cloud.sdk import Cerebras
 
-# Add parent directory to path to import sheild
+# Add parent directory to path to import shield
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import shield
 

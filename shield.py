@@ -108,7 +108,7 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result):
 
 
 def run(graph, context, prompt, seconds=1):
-    print(f"✅ sheild: Running with {seconds}s pauses between nodes.")
+    print(f"✅ shield: Running with {seconds}s pauses between nodes.")
     print(f"📝 Prompt: {prompt}")
     sentinel_result = sentinel(prompt, key=None)
     send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result)
