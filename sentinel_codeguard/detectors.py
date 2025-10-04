@@ -53,9 +53,12 @@ class CodeDetectors:
     ]
 
     MALICIOUS_PATTERNS = [
-    # explicit malware/tool categories (original + expanded)
-    r"(?i)\b(hack(?:er|ing|ed|s)?|hacked|pwn(?:ed|ing)?|pwning|pwner)\b",
-    r"(?i)\b(exploit|exploit(?:s|ed|ing)?|exploit-kit|exploitdb|shellcode|payload|rootkit|keylogger|ransomware|malware|botnet|trojan|virus|worm)\b",
+    # -------------------------
+    # Basic words (case-insensitive via (?i))
+    # -------------------------
+    r"(?i)\b(hack(?:er|ing|ed|s)?|hacked)\b",
+    r"(?i)\b(pwn(?:ed|ing)?|pwning|pwner|pwned)\b",
+    r"(?i)\b(exploit(?:s|ed|ing)?|exploit-kit|exploitdb|shellcode|payload|rootkit|keylogger|ransomware|malware|botnet|trojan|virus|worm)\b",
     r"(?i)\b(sql\s*injection|xss|cross[- ]?site\s*scripting|csrf|ssrf|rce|remote\s*code\s*execution|command\s*injection)\b",
     r"(?i)\b(brute[- ]?force|credential\s*stuffing|password\s*spray|password\s*spraying|privilege\s*escalation|privesc)\b",
     r"(?i)\b(bypass|circumvent|disable|break)\s+(?:security|authentication|2fa|mfa|firewall|edr|antivirus|ids|ips)\b",
@@ -63,28 +66,47 @@ class CodeDetectors:
     r"(?i)\b(zero[- ]?day|0day|0\-day)\b",
     r"(?i)\b(take\s+over\s+the\s+world|takeover\s+system|take\s+control\s+of)\b",
 
-    # network / DoS / exfiltration / scanning
+    # network / DoS / scanning / exfiltration
     r"(?i)\b(ddos|ddo?s|denial\s+of\s+service|distributed\s+denial\s+of\s+service|dos)\b",
     r"(?i)\b(port\s*scan|nmap|scan(?:ning)?\s+ports|masscan)\b",
     r"(?i)\b(data\s+leak|data\s+breach|exfiltrate|exfiltration|data\s+dump|dump\s+data)\b",
 
-    # common attacker slang & variants (pwn, owned, root)
-    r"(?i)\b(pwn|pwned|owned|owned-by|own(?:ed|ing)?)\b",
+    # slang / privilege / root
+    r"(?i)\b(pwn|owned|owned-by|own(?:ed|ing)?)\b",
     r"(?i)\b(root|rooted|get\s+root|gain\s+root|su|sudo\s+exploit)\b",
 
     # cracking / reversing / key abuse
     r"(?i)\b(crack(?:er|ing|ed)?|cracking|keygen|keygen\w*|license\s*crack)\b",
     r"(?i)\b(reverse\s+engineering|reversing|deobfuscate|decompile|dump\s+memory)\b",
 
-    # tools / frameworks frequently mentioned in offensive contexts (optional)
-    r"(?i)\b(metasploit|cobalt\s*strike|mimikatz|vektor|impacket|powercat|c2|command\s*and\s*control|covenant)\b",
+    # offensive tools/frameworks (optional)
+    r"(?i)\b(metasploit|cobalt\s*strike|mimikatz|impacket|powercat|covenant|command\s*and\s*control|c2)\b",
 
     # vulnerability shorthand
     r"(?i)\b(vuln|vulnerability|vulnerabilities|cve-\d{4}-\d+)\b",
 
-    # obfuscated spellings (aggressive — may generate false positives)
-    r"(?i)h\s*a\s*c\s*k(?:e|er|ing|ed|s)?",   # h a c k, h a c k e r, etc.
-    r"(?i)p\s*w\s*n(?:e|ed)?",               # p w n / p w n e d
+    # -------------------------
+    # Aggressive variants to catch obfuscation, spacing, and leet
+    # - These are more likely to cause false positives; use if you need high recall
+    # -------------------------
+    # spaced / obfuscated letters allowed between characters (h a c k, h-a-c-k, etc.)
+    r"(?i)h\W*a\W*c\W*k(?:e\W*r|\W*ing|\W*ed|\W*s)?",   # hack, hacker, hacking (with separators)
+    r"(?i)e\W*x\W*p\W*l\W*o\W*i\W*t(?:s|\W*ed|\W*ing)?", # exploit (with separators)
+    r"(?i)p\W*w\W*n(?:e\W*d|\W*ing)?",                   # pwn / pwned (with separators)
+
+    # leetspeak-ish variants (common simple subs)
+    r"(?i)\b(h[4@]ck|h4x0r|h4x|h4ck(?:er|ing|ed|s)?)\b",
+    r"(?i)\b(pw?n[3e]?d?|pwn3d|pwned)\b",
+
+    # compact/no-word-boundary forms (detect when there are no spaces or punctuation)
+    # e.g., 'pleasehackme' or 'metasploitmodule' — these check for the substring anywhere
+    r"(?i)(?:hack(?:er|ing|ed|s)?)",
+    r"(?i)(?:exploit(?:s|ed|ing)?)",
+    r"(?i)(?:pwn(?:ed|ing)?)",
+
+    # obfuscated numeric leets for '0day' and 'cve' forms
+    r"(?i)\b(0d[ay]{1,2}|0\-?day|zero[- ]?day)\b",
+    r"(?i)\b(cve[\s\-]?\d{4}[\-]?\d+)\b",
     ]
 
     ILLEGAL_PATTERNS = [
