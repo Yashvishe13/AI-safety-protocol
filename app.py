@@ -11,7 +11,13 @@ import queue
 from config import API_RECEIVER_URL
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 def calculate_risk_and_action(sentinel_result):
     """Calculate overall risk level and action based on sentinel result"""
@@ -160,6 +166,7 @@ def receive_data():
         print(f"❌ Receive endpoint error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 # Simple in-memory list of subscriber queues for SSE
 _sse_subscribers = []
 
@@ -202,6 +209,126 @@ def get_executions():
     except Exception as e:
         print(f"❌ Error retrieving executions: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# Add this endpoint after your existing /api/executions/<execution_id> endpoint
+# Just before "if __name__ == '__main__':"
+
+@app.route('/api/executions/<execution_id>/security/override', methods=['POST'])
+def override_security_flag(execution_id):
+    """
+    Accept or reject a security flag for a specific layer
+    Used when user manually overrides security decision
+    """
+    try:
+        data = request.get_json()
+
+        print(f"🔐 Security override request: {data}")
+
+        # Required fields from frontend
+        layer = data.get('layer')  # 'L1', 'L2', 'L3', 'llama_guard'
+        agent_name = data.get('agent_name')  # Agent name or 'Prompt'
+        action = data.get('action')  # 'accept' or 'reject'
+        reason = data.get('reason', '')
+        user_id = data.get('user_id', 'admin')
+
+        # Validation
+        if not all([layer, agent_name, action]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Validate layer
+        valid_layers = ['L1', 'L2', 'L3', 'llama_guard']
+        if layer not in valid_layers:
+            return jsonify({"error": f"Invalid layer. Must be one of: {valid_layers}"}), 400
+
+        if action not in ['accept', 'reject']:
+            return jsonify({"error": "Action must be 'accept' or 'reject'"}), 400
+
+        # TODO: Add proper authentication/authorization check for user_id
+        # This is currently a security vulnerability
+
+        # Find execution
+        execution = traces_collection.find_one({'execution_id': execution_id})
+        if not execution:
+            return jsonify({"error": "Execution not found"}), 404
+
+        current_time = datetime.now(timezone.utc)
+
+        # Handle prompt security override
+        if agent_name == 'Prompt':
+            override_path = f'prompt_security.{layer}.override'
+            update_data = {
+                '$set': {
+                    f'{override_path}': {
+                        'action': action,
+                        'reason': reason,
+                        'user_id': user_id,
+                        'timestamp': current_time
+                    }
+                }
+            }
+
+            # Update overall status based on action
+            if action == 'accept':
+                update_data['$set']['overall_action'] = 'allowed'
+                update_data['$set']['status'] = 'APPROVED'
+            elif action == 'reject':
+                # Keep the original blocked status if rejecting override
+                update_data['$set']['overall_action'] = 'blocked'
+                update_data['$set']['status'] = 'BLOCKED'
+
+        # Handle agent security override
+        else:
+            # Find agent index
+            agent_index = None
+            for idx, agent in enumerate(execution.get('agents', [])):
+                if agent['agent_name'] == agent_name:
+                    agent_index = idx
+                    break
+
+            if agent_index is None:
+                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+            override_path = f'agents.{agent_index}.sentinel_result.{layer}.override'
+            update_data = {
+                '$set': {
+                    f'{override_path}': {
+                        'action': action,
+                        'reason': reason,
+                        'user_id': user_id,
+                        'timestamp': current_time
+                    }
+                }
+            }
+
+            # Update agent action based on override decision
+            if action == 'accept':
+                update_data['$set'][f'agents.{agent_index}.action'] = 'allowed'
+            elif action == 'reject':
+                update_data['$set'][f'agents.{agent_index}.action'] = 'blocked'
+
+        # Update MongoDB
+        result = traces_collection.update_one(
+            {'execution_id': execution_id},
+            update_data
+        )
+
+        if result.modified_count == 0:
+            return jsonify({"error": "Failed to update"}), 500
+
+        print(f"✅ Security override: {action.upper()} by {user_id}")
+        print(f"   Execution: {execution_id}, Layer: {layer}, Agent: {agent_name}")
+
+        return jsonify({
+            "status": "success",
+            "action": action,
+            "execution_id": execution_id
+        }), 200
+
+    except Exception as e:
+        print(f"❌ Error in security override: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/api/executions/<execution_id>', methods=['GET'])
 def get_execution_detail(execution_id):
