@@ -4,9 +4,13 @@ This system uses multiple specialized agents to plan, write, and review code.
 """
 
 import os
+import sys
 from typing import TypedDict, Annotated, Sequence
 from langgraph.graph import StateGraph, END
 from cerebras.cloud.sdk import Cerebras
+
+# Add parent directory to path to import my_pause
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import my_pause
 
 
@@ -330,4 +334,3 @@ if __name__ == "__main__":
     print(result['final_code'])
     
     print("\n" + "=" * 80)
-

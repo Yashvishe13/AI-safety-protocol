@@ -457,5 +457,51 @@ def main():
             print("Subprocess hits:", res["subproc_hits"])
         print()
 
+# ---------------------------
+# Simple API for external callers
+# ---------------------------
+_global_guard = None
+
+def check_code_safety(code: str, enable_runtime: bool = False) -> Dict[str, Any]:
+    """
+    Simple one-line API to check if code is suspicious.
+    
+    Args:
+        code: The code snippet to analyze
+        enable_runtime: Whether to enable runtime strace analysis (default: False)
+    
+    Returns:
+        Dict with keys:
+            - label: "CLEAN", "SUSPICIOUS", or "MALICIOUS"
+            - score: float between 0-1 (higher = more suspicious)
+            - details: detailed analysis results
+    """
+    global _global_guard
+    
+    # Lazy initialization
+    if _global_guard is None:
+        try:
+            _global_guard = HolisticGuard(enable_runtime=enable_runtime)
+        except Exception as e:
+            return {
+                "label": "ERROR",
+                "score": 0.0,
+                "details": {"error": f"Failed to initialize guard: {str(e)}"}
+            }
+    
+    try:
+        result = _global_guard.score_snippet(code)
+        return {
+            "label": result["final_label"],
+            "score": result["fused_score"],
+            "details": result
+        }
+    except Exception as e:
+        return {
+            "label": "ERROR",
+            "score": 0.0,
+            "details": {"error": str(e)}
+        }
+
 if __name__ == "__main__":
     main()
