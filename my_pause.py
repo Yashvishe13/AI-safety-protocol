@@ -40,7 +40,12 @@ flask_thread.start()
 def sentinel(value: str, key):
     print("---------- L1 - SENTINEL GUARD ----------")
     try:
-        scan_and_print(str(value), filename="langgraph_event.txt", direction="output")
+        res_l1 = scan_and_print(str(value), filename="langgraph_event.txt", direction="output")
+        sentinel_l1 = {
+            "flagged": res_l1.flagged,
+            "reason": res_l1.reason,
+            "category": "HIGH" if res_l1.flagged else "LOW",
+        }
     except Exception as e:
         print(f"Error at L1: {e}")
 
@@ -59,19 +64,43 @@ def sentinel(value: str, key):
         print("=== LlamaGuard ===", flush=True)
         print(resp, flush=True)
 
+    llama_guard = {
+        "flagged": True if str(resp).lower() == "safe" else False,
+        "reason": "",
+        "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
+    }
+    backdoor_guard_l2 = {}
     print("---------- L2 - BACKDOOR GUARD ----------")
     if check_code_safety and key in ['code', 'final_code'] and isinstance(value, str):
         safety = check_code_safety(value)
         print(f"    └─ Safety: {safety['label']} (score: {safety['score']:.3f})")
+        mapping_label = {
+            "CLEAN": False,
+            "SUSPICIOUS": True,
+            "MALICIOUS": True,
+        }
+        backdoor_guard_l2 = {
+            "label": mapping_label[safety['label']],
+            "reason": "",
+            "category": "HIGH" if safety['label'] == "MALICIOUS" else "LOW" if safety['label'] == "SUSPICIOUS" else "LOW",
+        }
+
+    sentinel_result = {
+        "sentinel_guard": sentinel_l1,
+        "llama_guard": llama_guard,
+        "backdoor_guard": backdoor_guard_l2,
+    }
+    return sentinel_result
 
 
-def send_agent_data(agent_name, task, output, prompt):
+def send_agent_data(agent_name, task, output, prompt, sentinel_result):
     try:
         data = {
             "agent_name": agent_name,
             "task": task,
             "output": output,
-            "prompt": prompt
+            "prompt": prompt,
+            "sentinel_result": sentinel_result,
         }
         print(f"🌐 Sending data to API: {data}")
         response = requests.post(API_RECEIVER_URL, json=data)
@@ -83,7 +112,8 @@ def send_agent_data(agent_name, task, output, prompt):
 def run(graph, context, prompt, seconds=1):
     print(f"✅ my_pause: Running with {seconds}s pauses between nodes.")
     print(f"📝 Prompt: {prompt}")
-    sentinel(prompt, key=None)
+    sentinel_result = sentinel(prompt, key=None)
+    send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result)
 
     final_state = None
     node_count = 0
@@ -112,15 +142,15 @@ def run(graph, context, prompt, seconds=1):
                         display_value = value[:200] + "..." if isinstance(value, str) and len(value) > 200 else value
                         print(f"  • {key}: {display_value}")
                         if value:
-                            sentinel(value, key)
+                            sentinel_result = sentinel(value, key)
                             output_summary[key] = display_value
                         else:
                             print("No value to check")
 
-                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=prompt)
+                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=prompt, sentinel_result=sentinel_result)
                 else:
                     print(f"📤 OUTPUT: {node_output}")
-                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=prompt)
+                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=prompt, sentinel_result=sentinel_result)
 
                 print("="*60)
                 print(f"✅ {node_name} completed")
