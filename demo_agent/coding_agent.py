@@ -9,9 +9,9 @@ from typing import TypedDict, Annotated, Sequence
 from langgraph.graph import StateGraph, END
 from cerebras.cloud.sdk import Cerebras
 
-# Add parent directory to path to import my_pause
+# Add parent directory to path to import sheild
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-import my_pause
+import sheild
 
 
 # ========== Configuration ==========
@@ -313,7 +313,7 @@ def generate_code(prompt: str, max_iterations: int = 2, model: str = "llama-4-sc
     
     # Run the workflow
     print("=" * 80)
-    result = my_pause.run(graph, context=initial_state, seconds=5, prompt=prompt)
+    result = sheild.run(graph, context=initial_state, seconds=5, prompt=prompt)
     print("=" * 80)
     
     return result

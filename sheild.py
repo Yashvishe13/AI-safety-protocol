@@ -4,10 +4,10 @@ import os
 import threading
 import requests
 from functools import wraps
-from flask import Flask, request, jsonify
 from guard import scan_and_print
 from sentinel_semantic.llamaguard_client import LlamaGuardClient
 from sentinel_multiagent.agent_validator import sentinel_multiagent
+from config import API_RECEIVER_URL
 
 # Import safety checker
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'sentinel_backdoor'))
@@ -18,26 +18,7 @@ except:
 
 lg = LlamaGuardClient()
 
-# Configuration
-API_RECEIVER_URL = "http://localhost:5000/receive"
-
-app = Flask(__name__)
-
 output_summary = ""
-# Endpoint to receive data
-@app.route('/receive', methods=['POST'])
-def receive_data():
-    data = request.get_json()
-    print(f"📬 Received data via API:\n{data}")
-    return jsonify({"status": "received"}), 200
-
-# Start the Flask app in a separate thread
-def start_flask():
-    app.run(host="0.0.0.0", port=5000, debug=False)
-
-flask_thread = threading.Thread(target=start_flask, daemon=True)
-flask_thread.start()
-
 
 def sentinel(value: str, key):
     global output_summary
@@ -107,7 +88,6 @@ def sentinel(value: str, key):
     }
     return sentinel_result
 
-
 def send_agent_data(agent_name, task, output, prompt, sentinel_result):
     try:
         data = {
@@ -125,7 +105,7 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result):
 
 
 def run(graph, context, prompt, seconds=1):
-    print(f"✅ my_pause: Running with {seconds}s pauses between nodes.")
+    print(f"✅ sheild: Running with {seconds}s pauses between nodes.")
     print(f"📝 Prompt: {prompt}")
     sentinel_result = sentinel(prompt, key=None)
     send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result)
@@ -160,8 +140,6 @@ def run(graph, context, prompt, seconds=1):
                             output_summary[key] = display_value
                         else:
                             print("No value to check")
-                    
-                    
                     
                     send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result)
                 else:

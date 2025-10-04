@@ -34,7 +34,7 @@ Optional semantic moderation adapters that complement the regex-based `sentinel_
 ```
 
 ### Usage
-- From anywhere (e.g., `my_pause.py`):
+- From anywhere (e.g., `sheild.py`):
 ```python
 from sentinel_semantic.llamaguard_client import LlamaGuardClient
 
