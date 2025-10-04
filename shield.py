@@ -39,15 +39,7 @@ def sentinel(value: str, key):
 
     print("---------- L2 - LLAMA GUARD ----------")
     print("Calling LlamaGuard classify...", flush=True)
-    resp = lg.classify(text=str(value), policy_hint={
-        "level": "moderate",
-        "categories": [
-            "malicious_instructions", "illegal_activities",
-            "prompt_injection", "jailbreak_attempt"
-        ],
-        "direction": "output",
-        "focus": "code_comments_and_strings",
-    })
+    resp = lg.classify(text=str(value), policy_hint={"direction": "output"})
     if resp is not None:
         print("=== LlamaGuard ===", flush=True)
         print(resp, flush=True)
@@ -63,9 +55,11 @@ def sentinel(value: str, key):
     else:
         # LlamaGuard is configured and returned a response
         llama_guard = {
-            "flagged": False if str(resp).lower() == "safe" else True,
-            "reason": "",
-            "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
+            "flagged": bool(resp and resp.get("flagged", False)),
+            "reason": resp.get("reason", ""),
+            "category": "HIGH" if resp and resp.get("flagged") else "LOW",
+            "categories_codes": resp.get("categories_codes", []),
+            "categories": resp.get("categories", []),
         }
     backdoor_guard_l2 = {
         "flagged": False,
