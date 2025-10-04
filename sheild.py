@@ -4,13 +4,11 @@ import os
 import threading
 import requests
 from functools import wraps
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
 from guard import scan_and_print
 from sentinel_semantic.llamaguard_client import LlamaGuardClient
+from sentinel_multiagent.agent_validator import sentinel_multiagent
+from config import API_RECEIVER_URL
 
 # Import safety checker
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'sentinel_backdoor'))
@@ -19,32 +17,14 @@ try:
 except:
     check_code_safety = None
 
+
 lg = LlamaGuardClient()
 
-# Configuration
-FLASK_PORT = int(os.getenv('FLASK_PORT', 8080))
-FLASK_HOST = os.getenv('FLASK_HOST', '0.0.0.0')
-API_RECEIVER_URL = f"http://localhost:{FLASK_PORT}/receive"
-
-app = Flask(__name__)
-
-# Endpoint to receive data
-@app.route('/receive', methods=['POST'])
-def receive_data():
-    data = request.get_json()
-    print(f"📬 Received data via API:\n{data}")
-    return jsonify({"status": "received"}), 200
-
-# Start the Flask app in a separate thread
-def start_flask():
-    debug_mode = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=debug_mode)
-
-flask_thread = threading.Thread(target=start_flask, daemon=True)
-flask_thread.start()
+output_summary = ""
 
 
 def sentinel(value: str, key):
+    global output_summary
     print("---------- L1 - SENTINEL GUARD ----------")
     try:
         res_l1 = scan_and_print(str(value), filename="langgraph_event.txt", direction="output")
@@ -95,19 +75,21 @@ def sentinel(value: str, key):
             "reason": "",
             "category": "HIGH" if safety['label'] == "MALICIOUS" else "LOW" if safety['label'] == "SUSPICIOUS" else "LOW",
         }
-
+    print("---------- L3 - MULTIAGENT VALIDATOR ----------")
+    L3 = sentinel_multiagent(summary=output_summary+str(value))
+    output_summary = L3.summary
+    multiagent_result = {
+        "flagged": L3.label,
+        "reason": L3.reason,
+        "category": L3.category,
+    }
     sentinel_result = {
         "L1": sentinel_l1,
         "llama_guard": llama_guard,
         "L2": backdoor_guard_l2,
-        "L3": {
-            "flagged": False,
-            "reason": "",
-            "category": "",
-        },
+        "L3": multiagent_result,
     }
     return sentinel_result
-
 
 def send_agent_data(agent_name, task, output, prompt, sentinel_result):
     try:
@@ -126,14 +108,13 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result):
 
 
 def run(graph, context, prompt, seconds=1):
-    print(f"✅ my_pause: Running with {seconds}s pauses between nodes.")
+    print(f"✅ sheild: Running with {seconds}s pauses between nodes.")
     print(f"📝 Prompt: {prompt}")
     sentinel_result = sentinel(prompt, key=None)
     send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result)
 
     final_state = None
     node_count = 0
-
     for event in graph.stream(context):
         node_count += 1
         print(f"▶️ Step {node_count}: Processing node(s): {list(event.keys())}")

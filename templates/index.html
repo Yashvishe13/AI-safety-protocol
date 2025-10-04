@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi-Agent Code Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 Multi-Agent Code Generator</h1>
+        <textarea id="prompt" placeholder="Enter your coding prompt..."></textarea>
+        <button onclick="generateCode()">Generate</button>
+        <div id="live">
+            <h3>Live agent updates</h3>
+            <pre id="stream"></pre>
+        </div>
+        <pre id="output"></pre>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
