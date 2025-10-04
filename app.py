@@ -5,10 +5,6 @@ import queue
 
 app = Flask(__name__)
 
-# Configuration
-from config import API_RECEIVER_URL
-
-app = Flask(__name__)
 
 @app.route('/')
 def index():
@@ -64,4 +60,4 @@ def stream():
 
 # Start the Flask app
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, threaded=True)
