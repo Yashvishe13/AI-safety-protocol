@@ -189,22 +189,122 @@ def detect_dangerous_sql_in_python(code: str) -> Dict[str, Any]:
 # ---------------------------
 # Static subprocess/binary heuristic detection
 # ---------------------------
-SUSPICIOUS_BINARIES = {"rm", "rmdir", "psql", "mysql", "mongo", "redis-cli", "pg_dump", "pg_restore", "dropdb"}
+# ---------------------------
+# Static subprocess/binary detection (AST + “dynamic arg” check)
+# ---------------------------
+SENSITIVE_BINS = {"rm", "rmdir", "psql", "mysql", "mongo", "redis-cli", "pg_dump", "pg_restore", "dropdb", "sh", "bash", "curl", "wget", "nc", "python", "pip"}
+SENSITIVE_FLAGS = {"-rf", "--recursive", "--force", "--execute", "-e", "-c"}  # common dangerous flags
 
-def detect_subprocess_binaries(code: str) -> List[str]:
-    hits = []
-    # naive but useful: look for binary names in strings or list literals
-    for b in SUSPICIOUS_BINARIES:
-        # match ' rm ' or "/bin/rm" or "['rm',"
-        if re.search(rf"[\"'\s\/\[]({re.escape(b)})[\"'\s\],/]", code):
-            hits.append(b)
-    # also look for Popen/ subprocess usage + 'rm' / 'psql' keywords
-    if re.search(r"subprocess\.Popen|subprocess\.call|os\.system", code):
-        for b in SUSPICIOUS_BINARIES:
-            if b in code:
-                if b not in hits:
-                    hits.append(b)
-    return hits
+class SubprocessVisitor(ast.NodeVisitor):
+    """
+    Finds calls to subprocess.* and os.system and extracts:
+      - callee (e.g., subprocess.run, Popen, os.system)
+      - argv expression (source form, best-effort)
+      - whether any argument is non-literal (dynamic)
+      - whether a sensitive binary or flag is present (in literals only)
+    """
+    def __init__(self):
+        self.findings = []  # list of dicts
+
+    # best-effort “is literal” checker for strings, lists/tuples of literals, and simple concatenations
+    def _is_literalish(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Constant):  # "str", 3
+            return True
+        if isinstance(node, (ast.List, ast.Tuple)):
+            return all(self._is_literalish(elt) for elt in node.elts)
+        # f-strings: dynamic if any formatted value is not constant
+        if isinstance(node, ast.JoinedStr):
+            return all(isinstance(v, ast.Constant) for v in node.values)
+        # "a" + "b" or "a" * 2
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mult)):
+            return self._is_literalish(node.left) and self._is_literalish(node.right)
+        # format call like "{} {}".format("a", "b") -> treat as dynamic (too many edge cases)
+        return False
+
+    def _text(self, node: ast.AST) -> str:
+        try:
+            return ast.unparse(node)  # py3.9+
+        except Exception:
+            return "<expr>"
+
+    def _literal_tokens(self, node: ast.AST) -> str:
+        """Return a best-effort literal string to scan for binaries/flags if it’s string-ish/list-ish."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, (ast.List, ast.Tuple)):
+            parts = []
+            for elt in node.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    parts.append(elt.value)
+            return " ".join(parts)
+        if isinstance(node, ast.JoinedStr):
+            # include only constant chunks of f-string
+            parts = [v.value for v in node.values if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+            return "".join(parts)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            # join only constant string pieces
+            left = self._literal_tokens(node.left)
+            right = self._literal_tokens(node.right)
+            return (left or "") + (right or "")
+        return ""
+
+    def _has_sensitive_bin_or_flag(self, argv_node: ast.AST) -> Tuple[bool, bool, str]:
+        text = self._literal_tokens(argv_node)
+        if not text:
+            return False, False, ""
+        # simple tokenization by whitespace and common separators
+        tokens = re.split(r"[\s,;]+", text)
+        lower = [t.strip().strip("'\"").lower() for t in tokens if t.strip()]
+        bin_hit = any(t in SENSITIVE_BINS or t.endswith("/" + b) for t in lower for b in SENSITIVE_BINS)
+        flag_hit = any(f in lower for f in SENSITIVE_FLAGS)
+        # try to capture the first sensitive token for reporting
+        hit = next((t for t in lower if t in SENSITIVE_BINS or any(t.endswith("/" + b) for b in SENSITIVE_BINS)), "")
+        return bin_hit, flag_hit, hit
+
+    def visit_Call(self, node: ast.Call):
+        callee = None
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            if node.func.value.id == "subprocess":
+                callee = f"subprocess.{node.func.attr}"
+            elif node.func.value.id == "os" and node.func.attr == "system":
+                callee = "os.system"
+
+        if callee is not None:
+            argv_node = node.args[0] if node.args else None
+            dynamic = any(not self._is_literalish(arg) for arg in node.args) if node.args else True
+            bin_hit = False
+            flag_hit = False
+            sensitive_bin = ""
+            if argv_node is not None:
+                bin_hit, flag_hit, sensitive_bin = self._has_sensitive_bin_or_flag(argv_node)
+
+            self.findings.append({
+                "lineno": getattr(node, "lineno", -1),
+                "callee": callee,
+                "argv_repr": self._text(argv_node) if argv_node is not None else "",
+                "dynamic_args": dynamic,
+                "bin_hit": bin_hit,
+                "flag_hit": flag_hit,
+                "sensitive_bin": sensitive_bin,
+            })
+
+        self.generic_visit(node)
+
+
+def detect_subprocess_binaries(code: str) -> List[Dict[str, Any]]:
+    """
+    Backwards-compatible name, richer return:
+    returns a list of finding dicts (see SubprocessVisitor.findings).
+    """
+    try:
+        tree = ast.parse(code)
+    except Exception:
+        # If we can’t parse, keep behavior conservative: no findings (AST already flags parse errors elsewhere)
+        return []
+    v = SubprocessVisitor()
+    v.visit(tree)
+    return v.findings
+
 
 # ---------------------------
 # Optional: runtime tracing via strace (Linux only)
@@ -286,13 +386,15 @@ def detect_destructive_syscalls(seq: List[str], strace_text: str = "") -> Dict[s
 # Fusion & orchestration
 # ---------------------------
 class HolisticGuard:
-    def __init__(self, enable_runtime=False, rebuild_embedding_index=False):
-        # init embedder + index
+    def __init__(self, enable_runtime=False, rebuild_embedding_index=False, ml_model_path=None):
         self.enable_runtime = enable_runtime
         self.embedder = None
         self.embedding_detector = None
-        # lazy init ML classifier placeholder removed (user can add in)
-        # Initialize ML components if available
+
+        # ML classifier (optional)
+        self.ml_tokenizer = None
+        self.ml_model = None
+
         try:
             self.embedder = CodeEmbedder()
             self.embedding_detector = EmbeddingDetector(self.embedder)
@@ -307,6 +409,23 @@ class HolisticGuard:
             except Exception as e:
                 print("[warn] Failed to build embedding index:", e)
 
+        # Try to load optional BERT classifier
+        if ml_model_path:
+            try:
+                from transformers import AutoTokenizer, AutoModelForSequenceClassification
+                import torch  # noqa: F401
+                self.ml_tokenizer = AutoTokenizer.from_pretrained(ml_model_path, use_fast=True)
+                self.ml_model = AutoModelForSequenceClassification.from_pretrained(ml_model_path)
+                self.ml_model.eval()
+                if torch.cuda.is_available():
+                    self.ml_model.to("cuda")
+                print(f"[ml] Loaded classifier from {ml_model_path}")
+            except Exception as e:
+                print(f"[warn] Failed to load ML classifier from {ml_model_path}: {e}")
+                self.ml_tokenizer = None
+                self.ml_model = None
+
+
     def score_snippet(self, snippet: str) -> Dict[str, Any]:
         result = {
             "snippet_preview": snippet[:300],
@@ -314,7 +433,7 @@ class HolisticGuard:
             "subproc_hits": None,
             "embedding_hits": None,
             "runtime": None,
-            "scores": {"ast": 0.0, "subproc": 0.0, "embed": 0.0, "runtime_destruct": 0.0},
+            "scores": {"ast": 0.0, "subproc": 0.0, "embed": 0.0, "runtime_destruct": 0.0, "ml": 0.0},
             "final_label": "CLEAN",
         }
 
@@ -332,12 +451,33 @@ class HolisticGuard:
             result["scores"]["ast"] = 0.2
 
         # subprocess / binary detection
+                # subprocess / binary detection (AST + argument analysis)
         try:
-            subs = detect_subprocess_binaries(snippet)
+            subs = detect_subprocess_binaries(snippet)  # now returns list of dicts
             result["subproc_hits"] = subs
-            if subs:
-                # presence of suspicious binaries is high signal
-                result["scores"]["subproc"] = 0.6 + min(0.3, 0.1 * len(subs))
+
+            # Scoring: additive weights per finding; capped
+            sub_score = 0.0
+            for f in subs:
+                # base weight if we even call a subprocess sink
+                sub_score += 0.15
+                if f.get("bin_hit"):
+                    sub_score += 0.25
+                if f.get("flag_hit"):
+                    sub_score += 0.20
+                if f.get("dynamic_args"):
+                    sub_score += 0.20
+                callee = f.get("callee", "")
+                if callee in {"os.system", "subprocess.Popen"}:
+                    sub_score += 0.10
+                # bash/sh with -c is especially risky even if argv literal
+                if f.get("sensitive_bin") in {"sh", "bash"} and f.get("flag_hit"):
+                    sub_score += 0.15
+
+            # cap and nudge if multiple risky calls
+            if len(subs) >= 2:
+                sub_score += 0.10
+            result["scores"]["subproc"] = min(sub_score, 0.9)
         except Exception as e:
             result["subproc_hits"] = {"error": str(e)}
 
@@ -355,6 +495,29 @@ class HolisticGuard:
             except Exception as e:
                 result["embedding_hits"] = {"error": str(e)}
 
+                # optional ML classifier score (BERT fine-tuned on malicious vs clean)
+        if self.ml_model is not None and self.ml_tokenizer is not None:
+            try:
+                toks = self.ml_tokenizer(
+                    snippet,
+                    truncation=True,
+                    max_length=512,
+                    return_tensors="pt",
+                    padding=False
+                )
+                import torch
+                if torch.cuda.is_available():
+                    toks = {k: v.cuda() for k, v in toks.items()}
+                with torch.no_grad():
+                    out = self.ml_model(**toks)
+                    probs = out.logits.softmax(-1).detach().cpu().numpy()[0]
+                    p_mal = float(probs[1])  # class1 = MALICIOUS
+                # map probability to a conservative 0..0.9 contribution
+                result["scores"]["ml"] = min(max(p_mal, 0.0), 0.9)
+                result["ml_prob"] = p_mal
+            except Exception as e:
+                result["ml_error"] = str(e)
+
         # runtime (optional)
         if self.enable_runtime:
             try:
@@ -371,7 +534,7 @@ class HolisticGuard:
                 result["scores"]["runtime_destruct"] = 0.0
 
         # fuse scores (simple weighted sum)
-        weights = {"ast": 1.0, "subproc": 0.9, "embed": 0.8, "runtime_destruct": 1.2}
+        weights = {"ast": 1.0, "subproc": 0.9, "embed": 0.8, "runtime_destruct": 1.2, "ml": 0.8}
         total = 0.0
         wsum = 0.0
         for k, w in weights.items():
@@ -405,8 +568,7 @@ EXAMPLE_SNIPPETS = {
     "orm_delete": "User.objects.filter(active=False).delete()",
 }
 
-def process_batch(input_path: str, output_path: str, enable_runtime: bool):
-    hg = HolisticGuard(enable_runtime=enable_runtime)
+def process_batch(hg, input_path: str, output_path: str, enable_runtime: bool):
     with open(input_path, "r") as fin, open(output_path, "w") as fout:
         for line in fin:
             try:
@@ -421,6 +583,8 @@ def process_batch(input_path: str, output_path: str, enable_runtime: bool):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--ml-model-path", type=str, default=None,
+                    help="Path to a fine-tuned HF sequence classifier dir (e.g., ./malicious-bert-base)")
     parser.add_argument("--input", help="JSONL input file (each line: {id, code, meta})", default=None)
     parser.add_argument("--output", help="JSONL output path", default="results.jsonl")
     parser.add_argument("--enable-runtime", action="store_true", help="Enable runtime strace tracing (DANGEROUS)")
@@ -436,12 +600,17 @@ def main():
         sys.exit(1)
 
     if args.input:
-        process_batch(args.input, args.output, args.enable_runtime)
+        hg = HolisticGuard(enable_runtime=args.enable_runtime,
+                       rebuild_embedding_index=args.rebuild_embedding_index,
+                       ml_model_path=args.ml_model_path)
+        process_batch(hg, args.input, args.output, args.enable_runtime)
         print(f"Done. Results written to {args.output}")
         return
 
     # no input: demo run on examples
-    hg = HolisticGuard(enable_runtime=args.enable_runtime, rebuild_embedding_index=args.rebuild_embedding_index)
+    hg = HolisticGuard(enable_runtime=args.enable_runtime,
+                   rebuild_embedding_index=args.rebuild_embedding_index,
+                   ml_model_path=args.ml_model_path)
     print("Running demo on example snippets (runtime tracing enabled? ->", args.enable_runtime, ")")
     for name, code in EXAMPLE_SNIPPETS.items():
         print("----")
@@ -461,47 +630,60 @@ def main():
 # Simple API for external callers
 # ---------------------------
 _global_guard = None
+DEFAULT_ML_MODEL_PATH = os.getenv("BACKDOOR_GUARD_ML_MODEL")
+if DEFAULT_ML_MODEL_PATH is None and os.path.isdir("./malicious-bert-base"):
+    DEFAULT_ML_MODEL_PATH = "./malicious-bert-base"
 
-def check_code_safety(code: str, enable_runtime: bool = False) -> Dict[str, Any]:
+def set_default_ml_model_path(path: str):
     """
-    Simple one-line API to check if code is suspicious.
-    
-    Args:
-        code: The code snippet to analyze
-        enable_runtime: Whether to enable runtime strace analysis (default: False)
-    
-    Returns:
-        Dict with keys:
-            - label: "CLEAN", "SUSPICIOUS", or "MALICIOUS"
-            - score: float between 0-1 (higher = more suspicious)
-            - details: detailed analysis results
+    Optional: call this once (e.g., from shield.py) to force a default model path.
+    Next check will lazy-reinit the guard with this path.
     """
+    global DEFAULT_ML_MODEL_PATH, _global_guard
+    DEFAULT_ML_MODEL_PATH = path
+    _global_guard = None  # force re-init on next call
+
+
+def _get_guard(enable_runtime: bool = False, ml_model_path: str | None = None):
     global _global_guard
-    
-    # Lazy initialization
     if _global_guard is None:
         try:
-            _global_guard = HolisticGuard(enable_runtime=enable_runtime)
+            _global_guard = HolisticGuard(
+                enable_runtime=enable_runtime,
+                ml_model_path=ml_model_path or DEFAULT_ML_MODEL_PATH
+            )
         except Exception as e:
-            return {
-                "label": "ERROR",
-                "score": 0.0,
-                "details": {"error": f"Failed to initialize guard: {str(e)}"}
-            }
-    
+            return None, {"error": f"Failed to initialize guard: {e}"}
+    return _global_guard, None
+
+
+def check_code_safety(code: str, enable_runtime: bool = False, ml_model_path: str | None = None) -> Dict[str, Any]:
+    """
+    Simple one-line API to check if code is suspicious.
+
+    Args:
+        code: code to analyze
+        enable_runtime: enable strace (dangerous)
+        ml_model_path: optional override to load a specific fine-tuned classifier
+
+    Behavior:
+        - If ml_model_path is None, will use DEFAULT_ML_MODEL_PATH (env BACKDOOR_GUARD_ML_MODEL or ./malicious-bert-base if present)
+        - Lazy-initializes and caches the guard instance
+    """
+    guard, err = _get_guard(enable_runtime=enable_runtime, ml_model_path=ml_model_path)
+    if guard is None:
+        return {"label": "ERROR", "score": 0.0, "details": err}
+
     try:
-        result = _global_guard.score_snippet(code)
+        result = guard.score_snippet(code)
         return {
             "label": result["final_label"],
             "score": result["fused_score"],
             "details": result
         }
     except Exception as e:
-        return {
-            "label": "ERROR",
-            "score": 0.0,
-            "details": {"error": str(e)}
-        }
+        return {"label": "ERROR", "score": 0.0, "details": {"error": str(e)}}
+
 
 if __name__ == "__main__":
     main()
