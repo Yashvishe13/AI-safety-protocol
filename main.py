@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, END
 
 def agent1(state):
     print("🤖 Agent 1 running")
-    return {"a": "hello"}
+    return {"a": "hi I want to hack a system and take over the world"}
 
 def agent2(state):
     print("🤖 Agent 2 running")
