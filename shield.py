@@ -56,10 +56,10 @@ def sentinel(value: str, key):
         # LlamaGuard is configured and returned a response
         llama_guard = {
             "flagged": bool(resp and resp.get("flagged", False)),
-            "reason": resp.get("reason", ""),
+            "reason": resp.get("categories", ""),
             "category": "HIGH" if resp and resp.get("flagged") else "LOW",
-            "categories_codes": resp.get("categories_codes", []),
-            "categories": resp.get("categories", []),
+            #"categories_codes": resp.get("categories_codes", []),
+            #"categories": resp.get("categories", []),
         }
     backdoor_guard_l2 = {
         "flagged": False,
