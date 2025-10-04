@@ -179,3 +179,4 @@ keys/
 credentials/
 
 .gitignore
+# Model artifacts and outputs
