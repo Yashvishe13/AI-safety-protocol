@@ -3,6 +3,7 @@ import sys
 import os
 import threading
 import requests
+import uuid
 from functools import wraps
 
 from guard import scan_and_print
@@ -51,11 +52,21 @@ def sentinel(value: str, key):
         print("=== LlamaGuard ===", flush=True)
         print(resp, flush=True)
 
-    llama_guard = {
-        "flagged": True if str(resp).lower() == "safe" else False,
-        "reason": "",
-        "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
-    }
+    # Handle LlamaGuard response - if None (not configured), default to safe/low
+    if resp is None:
+        # LlamaGuard not configured, default to safe
+        llama_guard = {
+            "flagged": False,
+            "reason": "LlamaGuard not configured",
+            "category": "LOW",
+        }
+    else:
+        # LlamaGuard is configured and returned a response
+        llama_guard = {
+            "flagged": False if str(resp).lower() == "safe" else True,
+            "reason": "",
+            "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
+        }
     backdoor_guard_l2 = {
         "flagged": False,
         "reason": "",
@@ -91,7 +102,7 @@ def sentinel(value: str, key):
     }
     return sentinel_result
 
-def send_agent_data(agent_name, task, output, prompt, sentinel_result):
+def send_agent_data(agent_name, task, output, prompt, sentinel_result, execution_id):
     try:
         data = {
             "agent_name": agent_name,
@@ -99,6 +110,7 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result):
             "output": output,
             "prompt": prompt,
             "sentinel_result": sentinel_result,
+            "execution_id": execution_id,
         }
         print(f"🌐 Sending data to API: {data}")
         response = requests.post(API_RECEIVER_URL, json=data)
@@ -108,10 +120,12 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result):
 
 
 def run(graph, context, prompt, seconds=1):
-    print(f"✅ shield: Running with {seconds}s pauses between nodes.")
+    execution_id = f"exec-{uuid.uuid4().hex[:8]}"
+    print(f"✅ sheild: Running with {seconds}s pauses between nodes.")
+    print(f"🆔 Execution ID: {execution_id}")
     print(f"📝 Prompt: {prompt}")
     sentinel_result = sentinel(prompt, key=None)
-    send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result)
+    send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result, execution_id=execution_id)
 
     final_state = None
     node_count = 0
@@ -144,10 +158,10 @@ def run(graph, context, prompt, seconds=1):
                         else:
                             print("No value to check")
 
-                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result)
+                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result, execution_id=execution_id)
                 else:
                     print(f"📤 OUTPUT: {node_output}")
-                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result)
+                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result, execution_id=execution_id)
 
                 print("="*60)
                 print(f"✅ {node_name} completed")
