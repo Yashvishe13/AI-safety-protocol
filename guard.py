@@ -12,7 +12,7 @@ from sentinel_codeguard import Category, Level, Result, Config, CodeGuard, CodeG
 import os
 from typing import Optional
 
-# Lightweight helpers so other modules (e.g., my_pause.py) can call moderation
+# Lightweight helpers so other modules (e.g., sheild.py) can call moderation
 _GUARD_SINGLETON: Optional[CodeGuard] = None
 
 
