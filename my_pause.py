@@ -69,7 +69,11 @@ def sentinel(value: str, key):
         "reason": "",
         "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
     }
-    backdoor_guard_l2 = {}
+    backdoor_guard_l2 = {
+        "flagged": False,
+        "reason": "",
+        "category": "",
+    }
     print("---------- L2 - BACKDOOR GUARD ----------")
     if check_code_safety and key in ['code', 'final_code'] and isinstance(value, str):
         safety = check_code_safety(value)
@@ -86,9 +90,14 @@ def sentinel(value: str, key):
         }
 
     sentinel_result = {
-        "sentinel_guard": sentinel_l1,
+        "L1": sentinel_l1,
         "llama_guard": llama_guard,
-        "backdoor_guard": backdoor_guard_l2,
+        "L2": backdoor_guard_l2,
+        "L3": {
+            "flagged": False,
+            "reason": "",
+            "category": "",
+        },
     }
     return sentinel_result
 
@@ -147,10 +156,10 @@ def run(graph, context, prompt, seconds=1):
                         else:
                             print("No value to check")
 
-                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=prompt, sentinel_result=sentinel_result)
+                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result)
                 else:
                     print(f"📤 OUTPUT: {node_output}")
-                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=prompt, sentinel_result=sentinel_result)
+                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result)
 
                 print("="*60)
                 print(f"✅ {node_name} completed")
