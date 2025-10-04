@@ -20,7 +20,7 @@ AI-safety-protocol/
   app.py                         # Flask server (UI + API + SSE)
   config.py                      # App config (e.g., API_RECEIVER_URL)
   guard.py                       # Thin wrapper around sentinel_codeguard for CLI / helpers
-  sheild.py                      # Orchestrates safety layers, publishes telemetry to /receive
+  shield.py                      # Orchestrates safety layers, publishes telemetry to /receive
   demo_agent/
     coding_agent.py              # LangGraph multi-agent workflow (planner, coder, reviewer, refiner)
   static/
@@ -84,7 +84,7 @@ Notes:
 - **GROQ_LLAMAGUARD_MODEL**: Optional model name for Groq Llama Guard (default: `meta-llama/llama-guard-4-12b`).
 - **LLAMAGUARD_API_URL / LLAMAGUARD_API_KEY**: Optional alternative to Groq; implement the HTTP call in `llamaguard_client.py` if you prefer your own endpoint.
 - **SENTINEL_LOG_LEVEL**: Optional log level for `sentinel_codeguard` (e.g., `INFO`, `DEBUG`).
-- **API_RECEIVER_URL**: Where `sheild.py` posts telemetry. Defaults to `http://localhost:5000/receive` (loopback to this app).
+- **API_RECEIVER_URL**: Where `shield.py` posts telemetry. Defaults to `http://localhost:5000/receive` (loopback to this app).
 
 
 ### Running the Web App
@@ -111,7 +111,7 @@ Workflow:
 - `POST /generate` – Generate code.
   - Request body: `{ "prompt": "..." }`
   - Response body: `{ "final_code": "..." }`
-- `POST /receive` – Internal telemetry sink used by `sheild.py` to push per‑agent summaries.
+- `POST /receive` – Internal telemetry sink used by `shield.py` to push per‑agent summaries.
 - `GET /stream` – SSE endpoint streaming the telemetry received at `/receive` to the browser.
 
 Example request:
@@ -140,7 +140,7 @@ Routing:
 - `sentinel_backdoor/` (L2b): Holistic guard for suspicious code behavior. Signals include AST SQL checks, subprocess/binary usage heuristics, optional embeddings (CodeBERT + FAISS), and optional runtime tracing via `strace`.
 - `sentinel_multiagent/` (L3): Summarization and risk labeling (Low/Medium/High) using Cerebras. Falls back to safe defaults if not configured.
 
-All layers are orchestrated in `sheild.py`. Telemetry is posted to `API_RECEIVER_URL` and rebroadcast to the browser via SSE.
+All layers are orchestrated in `shield.py`. Telemetry is posted to `API_RECEIVER_URL` and rebroadcast to the browser via SSE.
 
 
 ### CLI Demos and Library Usage
@@ -171,7 +171,7 @@ All layers are orchestrated in `sheild.py`. Telemetry is posted to `API_RECEIVER
 ### Troubleshooting
 - "Cerebras client not configured": ensure `CEREBRAS_API_KEY` is set and `cerebras-cloud-sdk` is installed.
 - Heavy deps errors (torch/transformers/faiss): either install platform‑appropriate wheels or remove these from `requirements.txt` if you do not need embedding detection.
-- SSE not updating: check browser console and server logs; ensure `/receive` is hit by `sheild.py` (see `API_RECEIVER_URL`).
+- SSE not updating: check browser console and server logs; ensure `/receive` is hit by `shield.py` (see `API_RECEIVER_URL`).
 - Semantic moderation no‑ops: set `GROQ_API_KEY` or `LLAMAGUARD_API_URL`/`LLAMAGUARD_API_KEY`.
 
 
