@@ -7,8 +7,6 @@ from bson import ObjectId
 import json
 import queue
 
-app = Flask(__name__)
-
 # Configuration
 from config import API_RECEIVER_URL
 
