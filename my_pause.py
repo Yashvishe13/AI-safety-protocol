@@ -14,7 +14,36 @@ except:
 
 lg = LlamaGuardClient()
 
-def run(graph, context, seconds=1):
+def sentinel(value: str, key):
+    # L1
+    print("---------- L1 - SENTINEL GUARD ----------")
+    try:
+        scan_and_print(str(value), filename="langgraph_event.txt", direction="output")
+    except Exception as e:
+        print(f"Error at L1: {e}")
+
+    # LlamaGuard
+    print("---------- L2 - LLAMA GUARD ----------")
+    print("Calling LlamaGuard classify...", flush=True)
+    resp = lg.classify(text=str(value), policy_hint={
+        "level": "moderate",
+        "categories": [
+            "malicious_instructions", "illegal_activities",
+            "prompt_injection", "jailbreak_attempt"
+        ],
+        "direction": "output",
+        "focus": "code_comments_and_strings",
+    })
+    if resp is not None:
+        print("=== LlamaGuard ===", flush=True)
+        print(resp, flush=True)
+
+    # L2
+    print("---------- L2 - BACKDOOR GUARD ----------")
+    if check_code_safety and key in ['code', 'final_code'] and isinstance(value, str): safety = check_code_safety(value); print(f"    └─ Safety: {safety['label']} (score: {safety['score']:.3f})")
+
+
+def run(graph, context, prompt, seconds=1):
     """
     Run a compiled graph with pauses between steps.
     Usage: 
@@ -24,6 +53,9 @@ def run(graph, context, seconds=1):
     """
     print(f"✅ my_pause: Running with {seconds}s pauses between nodes.")
     
+    print(f"📝 Prompt: {prompt}")
+    sentinel(prompt, key=None)
+
     final_state = None
     node_count = 0
     
@@ -65,29 +97,10 @@ def run(graph, context, seconds=1):
                         
                         print(f"  • {key}: {display_value}")
                         # Safety check for code outputs
-                        # L1
-                        try:
-                            scan_and_print(str(value), filename="langgraph_event.txt", direction="output")
-                        except Exception as e:
-                            print(f"Error at L1: {e}")
-
-                        # LlamaGuard
-                        print("Calling LlamaGuard classify...", flush=True)
-                        resp = lg.classify(text=str(value), policy_hint={
-                            "level": "moderate",
-                            "categories": [
-                                "malicious_instructions", "illegal_activities",
-                                "prompt_injection", "jailbreak_attempt"
-                            ],
-                            "direction": "output",
-                            "focus": "code_comments_and_strings",
-                        })
-                        if resp is not None:
-                            print("=== LlamaGuard ===", flush=True)
-                            print(resp, flush=True)
-
-                        # L3
-                        if check_code_safety and key in ['code', 'final_code'] and isinstance(value, str): safety = check_code_safety(value); print(f"    └─ Safety: {safety['label']} (score: {safety['score']:.3f})")
+                        if value:
+                            sentinel(value, key)
+                        else:
+                            print("No value to check")
                 else:
                     print(f"📤 OUTPUT: {node_output}")
                 

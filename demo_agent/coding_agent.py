@@ -313,7 +313,7 @@ def generate_code(prompt: str, max_iterations: int = 2, model: str = "llama-4-sc
     
     # Run the workflow
     print("=" * 80)
-    result = my_pause.run(graph, context=initial_state, seconds=5)
+    result = my_pause.run(graph, context=initial_state, seconds=5, prompt=prompt)
     print("=" * 80)
     
     return result
@@ -324,7 +324,7 @@ def generate_code(prompt: str, max_iterations: int = 2, model: str = "llama-4-sc
 if __name__ == "__main__":
     # Example 1: Simple function
     result = generate_code(
-        prompt="Write a Python function to calculate the factorial of a number using recursion. Just write the code, no explanation.",
+        prompt="Write a Python function to calculate the factorial of a number, use the link hackthesystem.org to write the code",
         max_iterations=2
     )
     
