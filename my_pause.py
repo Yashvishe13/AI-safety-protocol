@@ -5,6 +5,10 @@ import threading
 import requests
 from functools import wraps
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 from guard import scan_and_print
 from sentinel_semantic.llamaguard_client import LlamaGuardClient
 
@@ -18,7 +22,9 @@ except:
 lg = LlamaGuardClient()
 
 # Configuration
-API_RECEIVER_URL = "http://localhost:5000/receive"
+FLASK_PORT = int(os.getenv('FLASK_PORT', 8080))
+FLASK_HOST = os.getenv('FLASK_HOST', '0.0.0.0')
+API_RECEIVER_URL = f"http://localhost:{FLASK_PORT}/receive"
 
 app = Flask(__name__)
 
@@ -31,7 +37,8 @@ def receive_data():
 
 # Start the Flask app in a separate thread
 def start_flask():
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    debug_mode = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
+    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=debug_mode)
 
 flask_thread = threading.Thread(target=start_flask, daemon=True)
 flask_thread.start()
