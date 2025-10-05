@@ -264,6 +264,7 @@ def override_security_flag(execution_id):
     """
     Accept or reject a security flag for a specific layer
     When accepting, set flagged=false and category=LOW for that layer
+    When rejecting agent, remove all subsequent agents and mark execution as REJECTED
     """
     try:
         data = request.get_json()
@@ -313,15 +314,30 @@ def override_security_flag(execution_id):
                         }
                     }
                 }
-            else:
+            else:  # reject prompt
+                # Set all prompt_security layers to false
+                prompt_security_clean = {}
+                for reject_layer in ['L1', 'L2', 'L3', 'llama_guard']:
+                    prompt_security_clean[f'prompt_security.{reject_layer}.flagged'] = False
+                    prompt_security_clean[f'prompt_security.{reject_layer}.category'] = 'LOW'
+
+                # Add override to rejected layer
+                prompt_security_clean[f'{layer_path}.override'] = {
+                    'action': action,
+                    'reason': reason,
+                    'user_id': user_id,
+                    'timestamp': current_time
+                }
+
                 update_data = {
                     '$set': {
-                        f'{layer_path}.override': {
-                            'action': action,
-                            'reason': reason,
-                            'user_id': user_id,
-                            'timestamp': current_time
-                        }
+                        **prompt_security_clean,
+                        'overall_action': 'rejected',  # ✅ Changed from 'blocked'
+                        'status': 'REJECTED',
+                        'rejected_by': user_id,
+                        'rejected_reason': reason,
+                        'rejected_at': current_time,
+                        'agents': []  # Remove all agents
                     }
                 }
 
@@ -358,16 +374,39 @@ def override_security_flag(execution_id):
                         f'agents.{agent_index}.action': 'allowed'
                     }
                 }
-            else:
+            else:  # reject agent
+                # Keep only agents up to and including the rejected one
+                agents_to_keep = execution['agents'][:agent_index + 1]
+
+                # Mark the rejected agent with rejection metadata
+                agents_to_keep[agent_index]['rejected'] = True
+                agents_to_keep[agent_index]['rejected_by'] = user_id
+                agents_to_keep[agent_index]['rejected_reason'] = reason
+                agents_to_keep[agent_index]['rejected_at'] = current_time
+                agents_to_keep[agent_index]['action'] = 'rejected'  # ✅ Changed from 'blocked'
+
+                # Set all flags to false in rejected agent
+                for reject_layer in ['L1', 'L2', 'L3', 'llama_guard']:
+                    agents_to_keep[agent_index]['sentinel_result'][reject_layer]['flagged'] = False
+                    agents_to_keep[agent_index]['sentinel_result'][reject_layer]['category'] = 'LOW'
+
+                # ✅ NEW: Set all prompt_security flags to false
+                prompt_security_clean = {}
+                for reject_layer in ['L1', 'L2', 'L3', 'llama_guard']:
+                    prompt_security_clean[f'prompt_security.{reject_layer}.flagged'] = False
+                    prompt_security_clean[f'prompt_security.{reject_layer}.category'] = 'LOW'
+
                 update_data = {
                     '$set': {
-                        f'{layer_path}.override': {
-                            'action': action,
-                            'reason': reason,
-                            'user_id': user_id,
-                            'timestamp': current_time
-                        },
-                        f'agents.{agent_index}.action': 'blocked'
+                        **prompt_security_clean,  # ✅ NEW: Clean prompt security
+                        'agents': agents_to_keep,
+                        'overall_action': 'rejected',  # ✅ Changed from 'blocked'
+                        'status': 'REJECTED',
+                        'rejected_by': user_id,
+                        'rejected_reason': reason,
+                        'rejected_at': current_time,
+                        'rejected_agent': agent_name,
+                        'rejected_layer': layer
                     }
                 }
 
@@ -380,31 +419,31 @@ def override_security_flag(execution_id):
         if result.modified_count == 0:
             return jsonify({"error": "Failed to update"}), 500
 
-        # Recalculate overall status
-        updated_execution = traces_collection.find_one({'execution_id': execution_id})
-        old_overall_action = updated_execution.get('overall_action')
-        old_overall_risk = updated_execution.get('overall_risk')
+        # Only recalculate if action was accept
+        if action == 'accept':
+            updated_execution = traces_collection.find_one({'execution_id': execution_id})
+            old_overall_action = updated_execution.get('overall_action')
+            old_overall_risk = updated_execution.get('overall_risk')
 
-        new_overall_action, new_overall_risk, new_blocked_by = recalculate_overall_status(updated_execution)
+            new_overall_action, new_overall_risk, new_blocked_by = recalculate_overall_status(updated_execution)
 
-        # Update overall status if changed
-        if new_overall_action != old_overall_action or new_overall_risk != old_overall_risk:
-            new_status = 'APPROVED' if new_overall_action == 'allowed' else 'BLOCKED'
+            if new_overall_action != old_overall_action or new_overall_risk != old_overall_risk:
+                new_status = 'APPROVED' if new_overall_action == 'allowed' else 'BLOCKED'
 
-            status_update = {
-                '$set': {
-                    'overall_action': new_overall_action,
-                    'overall_risk': new_overall_risk,
-                    'blocked_by': new_blocked_by,
-                    'status': new_status,
-                    'updated_at': current_time
+                status_update = {
+                    '$set': {
+                        'overall_action': new_overall_action,
+                        'overall_risk': new_overall_risk,
+                        'blocked_by': new_blocked_by,
+                        'status': new_status,
+                        'updated_at': current_time
+                    }
                 }
-            }
 
-            traces_collection.update_one(
-                {'execution_id': execution_id},
-                status_update
-            )
+                traces_collection.update_one(
+                    {'execution_id': execution_id},
+                    status_update
+                )
 
         # Get final state
         final_execution = traces_collection.find_one({'execution_id': execution_id})
@@ -420,9 +459,10 @@ def override_security_flag(execution_id):
                 "overall_risk": final_execution.get('overall_risk'),
                 "status": final_execution.get('status')
             },
+            "agents_remaining": len(final_execution.get('agents', [])),
             "changes": {
-                "flagged": f"{current_flagged} → False" if action == 'accept' else "no change",
-                "category": f"{current_category} → LOW" if action == 'accept' else "no change"
+                "flagged": f"{current_flagged} → False" if action == 'accept' else "rejected",
+                "category": f"{current_category} → LOW" if action == 'accept' else "rejected"
             }
         }), 200
 
