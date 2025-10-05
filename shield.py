@@ -139,16 +139,21 @@ app = Flask(__name__)
 @app.route("/api/executions/<execution_id>/security/override", methods=["POST"])
 def receive_user_command():
     try:
-        data = request.get_json(force=True)
+        try:
+            data = request.get_json(force=True)
+        except:
+            data = None
         print(f"📥 Received user command data: {data}")
         action = data.get("action")
+        execution_id = data.get("execution_id")
 
         return jsonify({
             "status": "success",
             "received": data,
             "message": "Data from user received successfully.",
-            "command": action
-        }), 200
+            "command": action,
+            "execution_id": execution_id
+        }), 200 if data else 400
 
     except Exception as e:
         print(f"❌ Error processing data: {e}")
@@ -160,7 +165,7 @@ if __name__ == "__main__":
 
 
 
-def run(graph, context, prompt, seconds=1):
+def run(graph, context, prompt, seconds=30):
     execution_id = f"exec-{uuid.uuid4().hex[:8]}"
     print(f"✅ sheild: Running with {seconds}s pauses between nodes.")
     print(f"🆔 Execution ID: {execution_id}")
@@ -171,6 +176,8 @@ def run(graph, context, prompt, seconds=1):
     final_state = None
     node_count = 0
     for event in graph.stream(context):
+        if node_count == -1:
+            break
         node_count += 1
         print(f"▶️ Step {node_count}: Processing node(s): {list(event.keys())}")
 
@@ -205,12 +212,6 @@ def run(graph, context, prompt, seconds=1):
                     print(f"Time taken: {execution_time} seconds")
                     send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result, execution_id=execution_id,execution_time=execution_time)
                     
-                    status_code, response = receive_user_command()
-                    if status_code == 200:
-                        if str(response.get("command")).lower() == "accept":
-                            continue
-                        else:
-                            node_name = '__end__'
                 else:
                     print(f"📤 OUTPUT: {node_output}")
                     send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result, execution_id=execution_id,execution_time=0)
@@ -220,6 +221,29 @@ def run(graph, context, prompt, seconds=1):
 
         if event:
             print(f"⏸  Pausing {seconds}s before next node...")
+            
+            while True:
+                status_code, response = receive_user_command()
+                print("----- Response -----")
+                print(response)
+                if status_code == 200:
+                    execution_id = response.get("execution_id")
+                    print("----- Accept -----")
+                    print(response.get("command"))
+                    if str(response.get("command")).lower() == "accept":
+                        new_data = {
+                            "L1": {"flagged": False, "reason": "", "category": ""},
+                            "llama_guard": {"flagged": False, "reason": "", "category": ""},
+                            "L2": {"flagged": False, "reason": "", "category": ""},
+                            "L3": {"flagged": False, "reason": "", "category": ""},
+                        }
+                        send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=new_data, execution_id=execution_id,execution_time=execution_time)
+                        break
+                    else:
+                        node_count = -1
+                else:
+                    print(f"❌ Error processing data: {response}")
+                    break
             time.sleep(seconds)
 
     print(f"✅ Workflow completed after {node_count} steps.")
