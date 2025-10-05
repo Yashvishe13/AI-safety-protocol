@@ -131,6 +131,33 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result, execution
     except Exception as e:
         print(f"❌ Failed to send agent data: {e}")
 
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route("/path-to-be-added", methods=["POST"])
+def receive_user_command():
+    try:
+        data = request.get_json(force=True)
+        print(f"📥 Received user command data: {data}")
+        accept = data.get("accept")
+
+        return jsonify({
+            "status": "success",
+            "received": data,
+            "message": "Data from user received successfully.",
+            "command": accept
+        }), 200
+
+    except Exception as e:
+        print(f"❌ Error processing data: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 400
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000)
+
+
 
 def run(graph, context, prompt, seconds=1):
     execution_id = f"exec-{uuid.uuid4().hex[:8]}"
@@ -172,6 +199,14 @@ def run(graph, context, prompt, seconds=1):
                             print("No value to check")
 
                     send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result, execution_id=execution_id)
+                    while True:
+                        status_code, response = receive_user_command()
+                        if status_code == 200:
+                            if response.get("command") == True:
+                                break
+                            else:
+                                node_name = '__end__'
+                                break
                 else:
                     print(f"📤 OUTPUT: {node_output}")
                     send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result, execution_id=execution_id)
