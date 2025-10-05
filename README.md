@@ -54,6 +54,19 @@ AI Safety Protocol
 ├── L2: Sentinel Backdoor     # Advanced threat detection  
 └── L3: Sentinel MultiAgent   # Cerebras-powered validation
 ```
+## 🧠 User Interface Preview
+
+Below are screenshots of the AI Safety Protocol dashboard and real-time monitoring system.
+
+### Landing Page
+![Main Dashboard](assets/land.png)
+
+### Dashboard 
+![Code Generation](assets/dash1.png)
+
+## 📺 Console Management
+The system provides a live monitoring view powered by Server-Sent Events, enabling real-time detection of safety violations and flagged responses.
+![Live Console](assets/dash2.png)
 
 ## 🚀 Quick Start
 
