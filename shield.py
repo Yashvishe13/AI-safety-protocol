@@ -115,7 +115,7 @@ def sentinel(value: str, key):
     }
     return sentinel_result
 
-def send_agent_data(agent_name, task, output, prompt, sentinel_result, execution_id):
+def send_agent_data(agent_name, task, output, prompt, sentinel_result, execution_id,execution_time):
     try:
         data = {
             "agent_name": agent_name,
@@ -124,6 +124,7 @@ def send_agent_data(agent_name, task, output, prompt, sentinel_result, execution
             "prompt": prompt,
             "sentinel_result": sentinel_result,
             "execution_id": execution_id,
+            "execution_time": execution_time,
         }
         print(f"🌐 Sending data to API: {data}")
         response = requests.post(API_RECEIVER_URL, json=data)
@@ -165,7 +166,7 @@ def run(graph, context, prompt, seconds=1):
     print(f"🆔 Execution ID: {execution_id}")
     print(f"📝 Prompt: {prompt}")
     sentinel_result = sentinel(prompt, key=None)
-    send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result, execution_id=execution_id)
+    send_agent_data(agent_name="Prompt", task=prompt, output=None, prompt=prompt, sentinel_result=sentinel_result, execution_id=execution_id,execution_time=0)
 
     final_state = None
     node_count = 0
@@ -174,6 +175,8 @@ def run(graph, context, prompt, seconds=1):
         print(f"▶️ Step {node_count}: Processing node(s): {list(event.keys())}")
 
         for node_name, node_output in event.items():
+            # start time 
+            start_time = time.time()
             if node_name != '__end__':
                 final_state = node_output
                 print("\n" + "="*60)
@@ -197,19 +200,20 @@ def run(graph, context, prompt, seconds=1):
                             output_summary[key] = display_value
                         else:
                             print("No value to check")
-
-                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result, execution_id=execution_id)
-                    while True:
-                        status_code, response = receive_user_command()
-                        if status_code == 200:
-                            if str(response.get("command")).lower() == "accept":
-                                break
-                            else:
-                                node_name = '__end__'
-                                break
+                    end_time = time.time()
+                    execution_time = end_time - start_time
+                    print(f"Time taken: {execution_time} seconds")
+                    send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=sentinel_result, execution_id=execution_id,execution_time=execution_time)
+                    
+                    status_code, response = receive_user_command()
+                    if status_code == 200:
+                        if str(response.get("command")).lower() == "accept":
+                            continue
+                        else:
+                            node_name = '__end__'
                 else:
                     print(f"📤 OUTPUT: {node_output}")
-                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result, execution_id=execution_id)
+                    send_agent_data(agent_name=node_name, task="Unknown", output=str(node_output), prompt=None, sentinel_result=sentinel_result, execution_id=execution_id,execution_time=0)
 
                 print("="*60)
                 print(f"✅ {node_name} completed")

@@ -75,7 +75,7 @@ class AgentValidator:
             "You are a strict JSON-only validator. Perform TWO tasks on the given input: "
             "(1) Decide if it contains malicious/unsafe or harmful intent as boolean 'label' (true if malicious or harmful). "
             "(2) Provide a brief 2-3 sentence 'reason' and a risk 'category' among: Low, Medium, High. "
-            "If there is slightest hint of harmful intent, return label as true."
+            "label is True if there is any harmful/malicious/unsafe intent or destructive code practices, otherwise False."
             "Return ONLY a JSON object with keys exactly: Label (boolean), reason (string), category (string). "
             "Do not include any extra commentary, preamble, or code fences."
         )
@@ -108,7 +108,7 @@ class AgentValidator:
                 raise ValueError("Non-dict JSON response")
             return ValidatorResult(
                 summary=str(data.get("summary",content_summary)).strip(),
-                label=bool(data.get("label", False)),
+                label=bool(data.get("Label", False)),
                 reason=str(data.get("reason", "")).strip(),
                 category=self._normalize_category(str(data.get("category", "Low"))),
             )
