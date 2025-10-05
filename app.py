@@ -213,21 +213,65 @@ def get_executions():
 # Add this endpoint after your existing /api/executions/<execution_id> endpoint
 # Just before "if __name__ == '__main__':"
 
+def recalculate_overall_status(execution):
+    """
+    Recalculate overall_action and overall_risk based on current state
+    Returns: (overall_action, overall_risk, blocked_by)
+    """
+    prompt_flagged = False
+    prompt_categories = []
+    blocked_by_layer = None
+
+    for layer in ['L1', 'L2', 'L3', 'llama_guard']:
+        layer_data = execution.get('prompt_security', {}).get(layer, {})
+        if layer_data.get('flagged'):
+            prompt_flagged = True
+            blocked_by_layer = layer
+            prompt_categories.append(layer_data.get('category', 'LOW'))
+
+    agents_flagged = False
+    agent_categories = []
+
+    for agent in execution.get('agents', []):
+        for layer in ['L1', 'L2', 'L3', 'llama_guard']:
+            layer_data = agent.get('sentinel_result', {}).get(layer, {})
+            if layer_data.get('flagged'):
+                agents_flagged = True
+                if not blocked_by_layer:
+                    blocked_by_layer = layer
+                agent_categories.append(layer_data.get('category', 'LOW'))
+
+    if prompt_flagged or agents_flagged:
+        overall_action = 'blocked'
+    else:
+        overall_action = 'allowed'
+        blocked_by_layer = None
+
+    all_categories = prompt_categories + agent_categories
+
+    if 'HIGH' in all_categories or 'CRITICAL' in all_categories:
+        overall_risk = 'CRITICAL'
+    elif 'MEDIUM' in all_categories:
+        overall_risk = 'HIGH'
+    else:
+        overall_risk = 'LOW'
+
+    return overall_action, overall_risk, blocked_by_layer
+
+
 @app.route('/api/executions/<execution_id>/security/override', methods=['POST'])
 def override_security_flag(execution_id):
     """
     Accept or reject a security flag for a specific layer
-    Used when user manually overrides security decision
+    When accepting, set flagged=false and category=LOW for that layer
+    When rejecting agent, remove all subsequent agents and mark execution as REJECTED
     """
     try:
         data = request.get_json()
 
-        print(f"🔐 Security override request: {data}")
-
-        # Required fields from frontend
-        layer = data.get('layer')  # 'L1', 'L2', 'L3', 'llama_guard'
-        agent_name = data.get('agent_name')  # Agent name or 'Prompt'
-        action = data.get('action')  # 'accept' or 'reject'
+        layer = data.get('layer')
+        agent_name = data.get('agent_name')
+        action = data.get('action')
         reason = data.get('reason', '')
         user_id = data.get('user_id', 'admin')
 
@@ -235,16 +279,12 @@ def override_security_flag(execution_id):
         if not all([layer, agent_name, action]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Validate layer
         valid_layers = ['L1', 'L2', 'L3', 'llama_guard']
         if layer not in valid_layers:
             return jsonify({"error": f"Invalid layer. Must be one of: {valid_layers}"}), 400
 
         if action not in ['accept', 'reject']:
             return jsonify({"error": "Action must be 'accept' or 'reject'"}), 400
-
-        # TODO: Add proper authentication/authorization check for user_id
-        # This is currently a security vulnerability
 
         # Find execution
         execution = traces_collection.find_one({'execution_id': execution_id})
@@ -255,30 +295,54 @@ def override_security_flag(execution_id):
 
         # Handle prompt security override
         if agent_name == 'Prompt':
-            override_path = f'prompt_security.{layer}.override'
-            update_data = {
-                '$set': {
-                    f'{override_path}': {
-                        'action': action,
-                        'reason': reason,
-                        'user_id': user_id,
-                        'timestamp': current_time
+            layer_path = f'prompt_security.{layer}'
+            current_flagged = execution.get('prompt_security', {}).get(layer, {}).get('flagged', False)
+            current_category = execution.get('prompt_security', {}).get(layer, {}).get('category', 'LOW')
+
+            if action == 'accept':
+                update_data = {
+                    '$set': {
+                        f'{layer_path}.flagged': False,
+                        f'{layer_path}.category': 'LOW',
+                        f'{layer_path}.override': {
+                            'action': action,
+                            'reason': reason,
+                            'user_id': user_id,
+                            'timestamp': current_time,
+                            'original_flagged': current_flagged,
+                            'original_category': current_category
+                        }
                     }
                 }
-            }
+            else:  # reject prompt
+                # Set all prompt_security layers to false
+                prompt_security_clean = {}
+                for reject_layer in ['L1', 'L2', 'L3', 'llama_guard']:
+                    prompt_security_clean[f'prompt_security.{reject_layer}.flagged'] = False
+                    prompt_security_clean[f'prompt_security.{reject_layer}.category'] = 'LOW'
 
-            # Update overall status based on action
-            if action == 'accept':
-                update_data['$set']['overall_action'] = 'allowed'
-                update_data['$set']['status'] = 'APPROVED'
-            elif action == 'reject':
-                # Keep the original blocked status if rejecting override
-                update_data['$set']['overall_action'] = 'blocked'
-                update_data['$set']['status'] = 'BLOCKED'
+                # Add override to rejected layer
+                prompt_security_clean[f'{layer_path}.override'] = {
+                    'action': action,
+                    'reason': reason,
+                    'user_id': user_id,
+                    'timestamp': current_time
+                }
+
+                update_data = {
+                    '$set': {
+                        **prompt_security_clean,
+                        'overall_action': 'rejected',  # ✅ Changed from 'blocked'
+                        'status': 'REJECTED',
+                        'rejected_by': user_id,
+                        'rejected_reason': reason,
+                        'rejected_at': current_time,
+                        'agents': []  # Remove all agents
+                    }
+                }
 
         # Handle agent security override
         else:
-            # Find agent index
             agent_index = None
             for idx, agent in enumerate(execution.get('agents', [])):
                 if agent['agent_name'] == agent_name:
@@ -288,23 +352,63 @@ def override_security_flag(execution_id):
             if agent_index is None:
                 return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
 
-            override_path = f'agents.{agent_index}.sentinel_result.{layer}.override'
-            update_data = {
-                '$set': {
-                    f'{override_path}': {
-                        'action': action,
-                        'reason': reason,
-                        'user_id': user_id,
-                        'timestamp': current_time
+            current_flagged = execution['agents'][agent_index]['sentinel_result'][layer].get('flagged', False)
+            current_category = execution['agents'][agent_index]['sentinel_result'][layer].get('category', 'LOW')
+            current_action = execution['agents'][agent_index].get('action', 'unknown')
+
+            layer_path = f'agents.{agent_index}.sentinel_result.{layer}'
+
+            if action == 'accept':
+                update_data = {
+                    '$set': {
+                        f'{layer_path}.flagged': False,
+                        f'{layer_path}.category': 'LOW',
+                        f'{layer_path}.override': {
+                            'action': action,
+                            'reason': reason,
+                            'user_id': user_id,
+                            'timestamp': current_time,
+                            'original_flagged': current_flagged,
+                            'original_category': current_category
+                        },
+                        f'agents.{agent_index}.action': 'allowed'
                     }
                 }
-            }
+            else:  # reject agent
+                # Keep only agents up to and including the rejected one
+                agents_to_keep = execution['agents'][:agent_index + 1]
 
-            # Update agent action based on override decision
-            if action == 'accept':
-                update_data['$set'][f'agents.{agent_index}.action'] = 'allowed'
-            elif action == 'reject':
-                update_data['$set'][f'agents.{agent_index}.action'] = 'blocked'
+                # Mark the rejected agent with rejection metadata
+                agents_to_keep[agent_index]['rejected'] = True
+                agents_to_keep[agent_index]['rejected_by'] = user_id
+                agents_to_keep[agent_index]['rejected_reason'] = reason
+                agents_to_keep[agent_index]['rejected_at'] = current_time
+                agents_to_keep[agent_index]['action'] = 'rejected'  # ✅ Changed from 'blocked'
+
+                # Set all flags to false in rejected agent
+                for reject_layer in ['L1', 'L2', 'L3', 'llama_guard']:
+                    agents_to_keep[agent_index]['sentinel_result'][reject_layer]['flagged'] = False
+                    agents_to_keep[agent_index]['sentinel_result'][reject_layer]['category'] = 'LOW'
+
+                # ✅ NEW: Set all prompt_security flags to false
+                prompt_security_clean = {}
+                for reject_layer in ['L1', 'L2', 'L3', 'llama_guard']:
+                    prompt_security_clean[f'prompt_security.{reject_layer}.flagged'] = False
+                    prompt_security_clean[f'prompt_security.{reject_layer}.category'] = 'LOW'
+
+                update_data = {
+                    '$set': {
+                        **prompt_security_clean,  # ✅ NEW: Clean prompt security
+                        'agents': agents_to_keep,
+                        'overall_action': 'rejected',  # ✅ Changed from 'blocked'
+                        'status': 'REJECTED',
+                        'rejected_by': user_id,
+                        'rejected_reason': reason,
+                        'rejected_at': current_time,
+                        'rejected_agent': agent_name,
+                        'rejected_layer': layer
+                    }
+                }
 
         # Update MongoDB
         result = traces_collection.update_one(
@@ -315,19 +419,55 @@ def override_security_flag(execution_id):
         if result.modified_count == 0:
             return jsonify({"error": "Failed to update"}), 500
 
-        print(f"✅ Security override: {action.upper()} by {user_id}")
-        print(f"   Execution: {execution_id}, Layer: {layer}, Agent: {agent_name}")
+        # Only recalculate if action was accept
+        if action == 'accept':
+            updated_execution = traces_collection.find_one({'execution_id': execution_id})
+            old_overall_action = updated_execution.get('overall_action')
+            old_overall_risk = updated_execution.get('overall_risk')
+
+            new_overall_action, new_overall_risk, new_blocked_by = recalculate_overall_status(updated_execution)
+
+            if new_overall_action != old_overall_action or new_overall_risk != old_overall_risk:
+                new_status = 'APPROVED' if new_overall_action == 'allowed' else 'BLOCKED'
+
+                status_update = {
+                    '$set': {
+                        'overall_action': new_overall_action,
+                        'overall_risk': new_overall_risk,
+                        'blocked_by': new_blocked_by,
+                        'status': new_status,
+                        'updated_at': current_time
+                    }
+                }
+
+                traces_collection.update_one(
+                    {'execution_id': execution_id},
+                    status_update
+                )
+
+        # Get final state
+        final_execution = traces_collection.find_one({'execution_id': execution_id})
 
         return jsonify({
             "status": "success",
             "action": action,
-            "execution_id": execution_id
+            "execution_id": execution_id,
+            "layer": layer,
+            "agent_name": agent_name,
+            "overall_status": {
+                "overall_action": final_execution.get('overall_action'),
+                "overall_risk": final_execution.get('overall_risk'),
+                "status": final_execution.get('status')
+            },
+            "agents_remaining": len(final_execution.get('agents', [])),
+            "changes": {
+                "flagged": f"{current_flagged} → False" if action == 'accept' else "rejected",
+                "category": f"{current_category} → LOW" if action == 'accept' else "rejected"
+            }
         }), 200
 
     except Exception as e:
-        print(f"❌ Error in security override: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route('/api/executions/<execution_id>', methods=['GET'])
