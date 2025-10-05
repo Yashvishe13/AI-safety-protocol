@@ -351,12 +351,13 @@ def get_execution_detail(execution_id):
 @app.route("/api/executions/final_state", methods=["POST"])
 def get_final_state():
     """
-    Mark an execution as completed and optionally store final state
+    Mark an execution as completed, store final state, and retrieve all flagged values
     """
     try:
         data = request.get_json()
         execution_id = data.get('execution_id')
         final_state = data.get('final_state')
+        
         
         if not execution_id:
             return jsonify({"status": "error", "message": "execution_id is required"}), 400
@@ -366,9 +367,45 @@ def get_final_state():
         if not execution:
             return jsonify({"status": "error", "message": "Execution not found"}), 404
         
+        # Extract all flagged values from prompt_security
+        prompt_security = execution.get('prompt_security', {})
+        prompt_flags = {
+            'L1': prompt_security.get('L1', {}).get('flagged', False),
+            'llama_guard': prompt_security.get('llama_guard', {}).get('flagged', False),
+            'L2': prompt_security.get('L2', {}).get('flagged', False),
+            'L3': prompt_security.get('L3', {}).get('flagged', False)
+        }
+        
+        # Extract all flagged values from agents
+        agents_flags = []
+        for agent in execution.get('agents', []):
+            agent_name = agent.get('agent_name', 'unknown')
+            sentinel_result = agent.get('sentinel_result', {})
+            agent_flags = {
+                'agent_name': agent_name,
+                'L1': sentinel_result.get('L1', {}).get('flagged', False),
+                'llama_guard': sentinel_result.get('llama_guard', {}).get('flagged', False),
+                'L2': sentinel_result.get('L2', {}).get('flagged', False),
+                'L3': sentinel_result.get('L3', {}).get('flagged', False)
+            }
+            agents_flags.append(agent_flags)
+        
+        # Check if any flags are True
+        any_prompt_flagged = any(prompt_flags.values())
+        any_agent_flagged = any(
+            agent_flag for agent in agents_flags 
+            for key, agent_flag in agent.items() 
+            if key != 'agent_name'
+        )
+        
+        # Determine status based on flagged values
+        # If all are false → COMPLETED, if any are true → PROCESSING
+        any_flagged = any_prompt_flagged or any_agent_flagged
+        execution_status = 'PROCESSING' if any_flagged else 'COMPLETED'
+        
         # Prepare update data
         update_data = {
-            'status': 'COMPLETED',
+            'status': execution_status,
             'updated_at': datetime.now(timezone.utc)
         }
         
@@ -385,12 +422,21 @@ def get_final_state():
         if result.modified_count == 0:
             return jsonify({"status": "error", "message": "Failed to update execution"}), 500
         
-        print(f"✅ Execution {execution_id} marked as COMPLETED")
+        print(f"✅ Execution {execution_id} marked as {execution_status}")
+        print(f"   Prompt flagged: {any_prompt_flagged}, Agents flagged: {any_agent_flagged}")
         
         return jsonify({
             "status": "success",
             "execution_id": execution_id,
-            "message": "Execution marked as completed"
+            "execution_status": execution_status,
+            "message": f"Execution marked as {execution_status.lower()}",
+            "flagged_summary": {
+                "prompt": prompt_flags,
+                "agents": agents_flags,
+                "any_prompt_flagged": any_prompt_flagged,
+                "any_agent_flagged": any_agent_flagged,
+                "any_flagged": any_flagged
+            }
         }), 200
         
     except Exception as e:
