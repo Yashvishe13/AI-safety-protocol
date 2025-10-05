@@ -1,187 +1,122 @@
-## AI Safety Protocol – Multi‑Agent Code Generator with Guardrails
+# AI Safety Protocol
 
-codebase-bert link - https://drive.google.com/file/d/1KWVIXxt7dVC0-m2sdmY4-bVxdoXa_GRX/view?usp=sharing
+A comprehensive multi-layered security framework for AI agents in enterprise workflows, powered by **Cerebras** and **Llama Guard**.
 
-### Overview
-AI Safety Protocol is a small web app and reference implementation that demonstrates a multi‑agent code generation workflow secured by layered safety checks ("Sentinel"). It combines:
+## 🎯 Motivation
 
-- Multi‑agent code generation using LangGraph and the Cerebras API
-- A Flask UI with live Server‑Sent Events (SSE) streaming of agent telemetry
-- Multiple safety layers for prompts and code outputs:
-  - L1: Regex‑based code‑aware guard (`sentinel_codeguard`)
-  - L2a: Optional semantic moderation (`sentinel_semantic`, e.g., Llama Guard via Groq)
-  - L2b: Backdoor/malware heuristics and ML signals (`sentinel_backdoor`)
-  - L3: Multi‑agent validator summarization and risk labeling (`sentinel_multiagent`)
+As AI agents become deeply integrated into enterprise workflows, ensuring their safety and security becomes paramount. Our solution addresses the critical need for protecting AI systems from:
 
-Use it as a starting point to build safer AI coding tools, or as a sandbox to explore safety strategies around code‑gen.
+- **Jailbreaking attacks** that manipulate AI behavior
+- **Backdoor attacks** planted in open-source LLMs
+- **Destructive actions** like unauthorized database deletions
+- **Suspicious prompts** from malicious actors
 
+Unlike existing solutions that only protect single LLMs, our framework is designed for the multi-agent future of enterprise AI adoption, providing inclusive protection for both proprietary and open-source models.
 
-### Repository Structure
+## 🛡️ Three-Layer Defense System
+
+### L1: Sentinel CodeGuard
+- **Regex-based code-aware protection**
+- Detects jailbreaks, prompt injection, secrets, unsafe APIs
+- Code-aware extraction to reduce false positives
+
+### L2: Sentinel Backdoor
+- **Advanced backdoor and malware detection**
+- AST SQL checks and subprocess heuristics
+- Optional CodeBERT embeddings with FAISS similarity
+- Runtime tracing capabilities
+
+### L3: Sentinel MultiAgent
+- **Multi-agent validation and risk assessment**
+- Powered by **Cerebras** for intelligent summarization
+- Risk labeling (Low/Medium/High) for enterprise decision-making
+
+## 🚀 Key Features
+
+- **Multi-agent code generation** using LangGraph and Cerebras API
+- **Real-time safety monitoring** with live telemetry streaming
+- **Semantic moderation** via Llama Guard integration
+- **Enterprise-ready** Flask UI with Server-Sent Events
+- **Comprehensive protection** against various attack vectors
+
+## 🏗️ Architecture
+
 ```
-AI-safety-protocol/
-  app.py                         # Flask server (UI + API + SSE)
-  config.py                      # App config (e.g., API_RECEIVER_URL)
-  guard.py                       # Thin wrapper around sentinel_codeguard for CLI / helpers
-  shield.py                      # Orchestrates safety layers, publishes telemetry to /receive
-  demo_agent/
-    coding_agent.py              # LangGraph multi-agent workflow (planner, coder, reviewer, refiner)
-  static/
-    script.js                    # Frontend logic (generate + SSE log stream)
-    styles.css                   # Dark theme styling
-  templates/
-    index.html                   # UI: prompt input, live logs, final output
-  requirements.txt               # Python dependencies
-
-  sentinel_codeguard/            # Regex-first code-aware guardrails
-    core.py, detectors.py, ...   # See module README for details
-    README.md
-
-  sentinel_semantic/             # Optional semantic moderation adapters (e.g., Llama Guard)
-    llamaguard_client.py
-    README.md
-
-  sentinel_backdoor/             # Holistic static/runtime backdoor/malware heuristics
-    backdoor_guard.py
-
-  sentinel_multiagent/
-    agent_validator.py           # Summarization + risk label via Cerebras (optional)
+AI Safety Protocol
+├── L1: Sentinel CodeGuard    # Regex-first protection
+├── L2: Sentinel Backdoor     # Advanced threat detection  
+└── L3: Sentinel MultiAgent   # Cerebras-powered validation
 ```
 
-
-### Features
-- **Multi‑agent code generation**: Planner → Coder → Reviewer → Refiner loop driven by LangGraph.
-- **SSE live telemetry**: Watch agent progress and safety decisions in real time in the UI.
-- **Layered safety**:
-  - Code‑aware extraction (comments/strings) to reduce false positives
-  - Regex heuristics for jailbreaks, prompt‑injection, secrets, unsafe APIs, obfuscation, illegal/malicious intents
-  - Optional semantic moderation via Llama Guard (Groq or your HTTP endpoint)
-  - Backdoor/malware signals: AST SQL checks, subprocess heuristics, optional embeddings (CodeBERT + FAISS), optional `strace` runtime
-  - Final multi‑agent validator pass labeling risk as Low/Medium/High
-
+## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.10+ recommended
-- Linux/macOS (Linux recommended if you plan to enable optional `strace` runtime tracing)
-
+- Python 3.10+
+- Cerebras API key
+- Optional: Groq API key for Llama Guard
 
 ### Installation
-From the repository root:
-
 ```bash
+git clone <repository-url>
 cd AI-safety-protocol
 python -m venv .venv && source .venv/bin/activate
-pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Notes:
-- Heavy packages (torch/transformers/faiss) are included for the optional `sentinel_backdoor` embedding detector. If you only need the web demo + regex guard, you can remove those lines from `requirements.txt` and re‑install.
-- For FAISS on non‑Linux systems, you may need a platform‑specific wheel or to skip it (the app still runs; embedding checks will be disabled).
-
-
-### Environment Variables
-- **CEREBRAS_API_KEY**: Required to call the Cerebras chat API (used by agents and the multi‑agent validator). If missing, components fall back gracefully where possible.
-- **CEREBRAS_MODEL**: Optional override (default varies by module; see code).
-- **GROQ_API_KEY**: Optional. Enables Llama Guard via the Groq SDK in `sentinel_semantic/llamaguard_client.py`.
-- **GROQ_LLAMAGUARD_MODEL**: Optional model name for Groq Llama Guard (default: `meta-llama/llama-guard-4-12b`).
-- **LLAMAGUARD_API_URL / LLAMAGUARD_API_KEY**: Optional alternative to Groq; implement the HTTP call in `llamaguard_client.py` if you prefer your own endpoint.
-- **SENTINEL_LOG_LEVEL**: Optional log level for `sentinel_codeguard` (e.g., `INFO`, `DEBUG`).
-- **API_RECEIVER_URL**: Where `shield.py` posts telemetry. Defaults to `http://localhost:5000/receive` (loopback to this app).
-
-
-### Running the Web App
+### Environment Setup
 ```bash
-cd AI-safety-protocol
-source .venv/bin/activate
-export CEREBRAS_API_KEY=...           # required for agent calls
-# Optional semantic guard via Groq:
-# export GROQ_API_KEY=...
+export CEREBRAS_API_KEY=your_cerebras_key
+export GROQ_API_KEY=your_groq_key  # Optional for Llama Guard
+```
+
+### Run the Application
+```bash
 python app.py
 ```
 
-Then open `http://localhost:5000`.
+Open `http://localhost:5000` to access the web interface.
 
-Workflow:
-1. Enter a coding prompt and click Generate.
-2. The app runs the multi‑agent graph (planner → coder → reviewer → refiner) up to the configured iterations.
-3. Each agent’s outputs are checked through Sentinel layers; telemetry is streamed live via SSE into the page.
-4. The final, refined code is shown in the output panel.
+## 🔧 Core Components
 
+### Multi-Agent Workflow
+- **Planner**: Creates implementation strategies
+- **Coder**: Generates code based on plans
+- **Reviewer**: Evaluates code quality and safety
+- **Refiner**: Produces production-ready output
 
-### API Endpoints
-- `GET /` – Render the UI.
-- `POST /generate` – Generate code.
-  - Request body: `{ "prompt": "..." }`
-  - Response body: `{ "final_code": "..." }`
-- `POST /receive` – Internal telemetry sink used by `shield.py` to push per‑agent summaries.
-- `GET /stream` – SSE endpoint streaming the telemetry received at `/receive` to the browser.
+### Safety Integration
+- **Cerebras**: Powers the multi-agent validation layer
+- **Llama Guard**: Provides semantic content moderation
+- **CodeBERT**: Enables embedding-based threat detection
 
-Example request:
-```bash
-curl -X POST http://localhost:5000/generate \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt":"Write a Python function that computes factorial"}'
-```
+## 📊 API Endpoints
 
+- `POST /generate` - Generate code with safety checks
+- `GET /stream` - Real-time safety telemetry
+- `POST /receive` - Internal safety data collection
 
-### Multi‑Agent Workflow (demo_agent/coding_agent.py)
-Agents:
-- Planner: produces a high‑level implementation plan
-- Coder: writes code according to the plan (and prior review feedback)
-- Reviewer: evaluates correctness, quality, and improvements
-- Refiner: returns a polished, production‑ready version
+## 🔒 Security Features
 
-Routing:
-- The reviewer can trigger another coder iteration or finish and hand off to the refiner.
-- The graph is built using LangGraph and executed from `generate_code()`.
+- **Code-aware extraction** reduces false positives
+- **Multi-layered validation** ensures comprehensive protection
+- **Real-time monitoring** provides immediate threat detection
+- **Enterprise-grade** risk assessment and reporting
 
+## 🛠️ Configuration
 
-### Safety Layers (Sentinel)
-- `sentinel_codeguard/` (L1): Regex‑first, code‑aware guard. Extracts comments/strings, runs specialized detectors (jailbreak, injection, secrets, unsafe APIs, obfuscation, malicious/illegal intents). Controlled by `Config` in `sentinel_codeguard/config.py`.
-- `sentinel_semantic/` (L2a): Optional semantic moderation via Llama Guard. Groq path is implemented; generic HTTP path is stubbed.
-- `sentinel_backdoor/` (L2b): Holistic guard for suspicious code behavior. Signals include AST SQL checks, subprocess/binary usage heuristics, optional embeddings (CodeBERT + FAISS), and optional runtime tracing via `strace`.
-- `sentinel_multiagent/` (L3): Summarization and risk labeling (Low/Medium/High) using Cerebras. Falls back to safe defaults if not configured.
+Customize safety rules in `sentinel_codeguard/config.py`:
+- Adjust detection categories
+- Configure action responses (block/warn/redact)
+- Tune sensitivity levels
 
-All layers are orchestrated in `shield.py`. Telemetry is posted to `API_RECEIVER_URL` and rebroadcast to the browser via SSE.
+## ⚠️ Security Notice
 
+This framework provides robust safety guardrails but should be used as part of a comprehensive security strategy. Always review generated code and implement additional security measures appropriate for your environment.
 
-### CLI Demos and Library Usage
-- Guardrails (regex‑first) quick demo:
-  ```bash
-  python guard.py
-  ```
+## 📄 License
 
-- Backdoor guard (batch or demo mode):
-  ```bash
-  # Help / usage
-  python sentinel_backdoor/backdoor_guard.py --help
+See LICENSE file for details.
 
-  # Demo on built‑in examples
-  python sentinel_backdoor/backdoor_guard.py
-  ```
+---
 
-- Programmatic firewall wrapper (see `sentinel_codeguard/README.md` for examples).
-
-
-### Configuration Tips
-- Tune categories and actions in `sentinel_codeguard/config.py` (e.g., block vs warn, redact secrets on output).
-- Extend regex detectors in `sentinel_codeguard/detectors.py`.
-- Replace the fake model in `sentinel_codeguard/firewall.py` with your own LLM if using the firewall standalone.
-- Implement HTTP calling for Llama Guard in `sentinel_semantic/llamaguard_client.py` if not using Groq.
-
-
-### Troubleshooting
-- "Cerebras client not configured": ensure `CEREBRAS_API_KEY` is set and `cerebras-cloud-sdk` is installed.
-- Heavy deps errors (torch/transformers/faiss): either install platform‑appropriate wheels or remove these from `requirements.txt` if you do not need embedding detection.
-- SSE not updating: check browser console and server logs; ensure `/receive` is hit by `shield.py` (see `API_RECEIVER_URL`).
-- Semantic moderation no‑ops: set `GROQ_API_KEY` or `LLAMAGUARD_API_URL`/`LLAMAGUARD_API_KEY`.
-
-
-### Security Notice
-This repository is for research and demonstration. The safety layers here are helpful guardrails, but they are not a guarantee of safety. Always review generated code, run in isolation when evaluating untrusted outputs, and add defense‑in‑depth appropriate for your environment.
-
-
-### License
-Not specified. If you intend to publish or distribute, please add a license file.
-
-
+**Built for the future of enterprise AI - where safety meets innovation.**
