@@ -348,6 +348,55 @@ def get_execution_detail(execution_id):
         print(f"❌ Error retrieving execution {execution_id}: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/executions/final_state", methods=["POST"])
+def get_final_state():
+    """
+    Mark an execution as completed and optionally store final state
+    """
+    try:
+        data = request.get_json()
+        execution_id = data.get('execution_id')
+        final_state = data.get('final_state')
+        
+        if not execution_id:
+            return jsonify({"status": "error", "message": "execution_id is required"}), 400
+        
+        # Find the execution
+        execution = traces_collection.find_one({'execution_id': execution_id})
+        if not execution:
+            return jsonify({"status": "error", "message": "Execution not found"}), 404
+        
+        # Prepare update data
+        update_data = {
+            'status': 'COMPLETED',
+            'updated_at': datetime.now(timezone.utc)
+        }
+        
+        # Add final state if provided
+        if final_state is not None:
+            update_data['final_state'] = final_state
+        
+        # Update status to COMPLETED
+        result = traces_collection.update_one(
+            {'execution_id': execution_id},
+            {'$set': update_data}
+        )
+        
+        if result.modified_count == 0:
+            return jsonify({"status": "error", "message": "Failed to update execution"}), 500
+        
+        print(f"✅ Execution {execution_id} marked as COMPLETED")
+        
+        return jsonify({
+            "status": "success",
+            "execution_id": execution_id,
+            "message": "Execution marked as completed"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error marking execution as completed: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # Start the Flask app
 if __name__ == '__main__':
     app.run(debug=False, port=9000, host='127.0.0.1')
