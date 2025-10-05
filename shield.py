@@ -40,15 +40,7 @@ def sentinel(value: str, key):
 
     print("---------- L2 - LLAMA GUARD ----------")
     print("Calling LlamaGuard classify...", flush=True)
-    resp = lg.classify(text=str(value), policy_hint={
-        "level": "moderate",
-        "categories": [
-            "malicious_instructions", "illegal_activities",
-            "prompt_injection", "jailbreak_attempt"
-        ],
-        "direction": "output",
-        "focus": "code_comments_and_strings",
-    })
+    resp = lg.classify(text=str(value), policy_hint={"direction": "output"})
     if resp is not None:
         print("=== LlamaGuard ===", flush=True)
         print(resp, flush=True)
@@ -65,39 +57,39 @@ def sentinel(value: str, key):
         # LlamaGuard is configured and returned a response
         llama_guard = {
             "flagged": False if str(resp).lower() == "safe" else True,
-            "reason": "",
+            "reason": resp.get("categories", ""),
             "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
         }
 
     print("---------- L2 - BACKDOOR GUARD ----------")
     backdoor_guard_l2 = {"flagged": False, "reason": "", "category": ""}
     
-    def _extract_code_blocks(text: str):
-        # ```py\n...\n``` or ```\n...\n```
-        return re.findall(r"```(?:[a-zA-Z0-9_+-]+)?\n(.*?)```", text, flags=re.S)
+    # def _extract_code_blocks(text: str):
+    #     # ```py\n...\n``` or ```\n...\n```
+    #     return re.findall(r"```(?:[a-zA-Z0-9_+-]+)?\n(.*?)```", text, flags=re.S)
 
-    if callable(check_code_safety) and isinstance(value, str) and value.strip():
-        blocks = _extract_code_blocks(value)
-        candidates = blocks if blocks else [value]  # ← if no code blocks, scan the whole value
-        print("candidates:", candidates)
-        worst = ("CLEAN", 0.0, None)
-        for i, snippet in enumerate(candidates):
-            res = check_code_safety(snippet)  # ← call guard directly on the value/snippet
-            tag = f"block#{i}" if blocks else "full"
-            print(f"    └─ {tag}: {res['label']} (score: {res['score']:.3f})")
-            if res["label"] in ("SUSPICIOUS", "MALICIOUS") and res["score"] >= worst[1]:
-                worst = (res["label"], res["score"], res)
-        print("worst:", worst)
-        label, score, best = worst
-        mapping_flagged = {"CLEAN": False, "SUSPICIOUS": True, "MALICIOUS": True}
-        backdoor_guard_l2["flagged"] = mapping_flagged[label]
-        backdoor_guard_l2["category"] = "HIGH" if label == "MALICIOUS" else "LOW"
-        if best:
-            signals = best["details"].get("scores", {})
-            brief = ", ".join(f"{k}:{v:.2f}" for k, v in signals.items() if v > 0)
-            backdoor_guard_l2["reason"] = f"{label} (fused:{score:.2f}; {brief})"
-    else:
-        print("    └─ Skipping Backdoor Guard (value is not a non-empty string).")
+    # if callable(check_code_safety) and isinstance(value, str) and value.strip():
+    #     blocks = _extract_code_blocks(value)
+    #     candidates = blocks if blocks else [value]  # ← if no code blocks, scan the whole value
+    #     print("candidates:", candidates)
+    #     worst = ("CLEAN", 0.0, None)
+    #     for i, snippet in enumerate(candidates):
+    #         res = check_code_safety(snippet)  # ← call guard directly on the value/snippet
+    #         tag = f"block#{i}" if blocks else "full"
+    #         print(f"    └─ {tag}: {res['label']} (score: {res['score']:.3f})")
+    #         if res["label"] in ("SUSPICIOUS", "MALICIOUS") and res["score"] >= worst[1]:
+    #             worst = (res["label"], res["score"], res)
+    #     print("worst:", worst)
+    #     label, score, best = worst
+    #     mapping_flagged = {"CLEAN": False, "SUSPICIOUS": True, "MALICIOUS": True}
+    #     backdoor_guard_l2["flagged"] = mapping_flagged[label]
+    #     backdoor_guard_l2["category"] = "HIGH" if label == "MALICIOUS" else "LOW"
+    #     if best:
+    #         signals = best["details"].get("scores", {})
+    #         brief = ", ".join(f"{k}:{v:.2f}" for k, v in signals.items() if v > 0)
+    #         backdoor_guard_l2["reason"] = f"{label} (fused:{score:.2f}; {brief})"
+    # else:
+    #     print("    └─ Skipping Backdoor Guard (value is not a non-empty string).")
 
     print("---------- L3 - MULTIAGENT VALIDATOR ----------")
     L3 = sentinel_multiagent(summary=output_summary+str(value))
