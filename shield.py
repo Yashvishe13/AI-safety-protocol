@@ -54,12 +54,19 @@ def sentinel(value: str, key):
             "category": "LOW",
         }
     else:
+        print("---------- LlamaGuard Response ----------")
+        print(resp)
+        print("---------- END LlamaGuard Response ----------")
         # LlamaGuard is configured and returned a response
         llama_guard = {
-            "flagged": False if str(resp).lower() == "safe" else True,
+            "flagged": True if "unsafe" in str(resp).lower() else False,
             "reason": resp.get("categories", ""),
-            "category": "LOW" if str(resp).lower() == "safe" else "HIGH",
+            "category": "HIGH" if "unsafe" in str(resp).lower() else "LOW",
         }
+        
+        print("---------- print LlamaGuard Response ----------")
+        print(llama_guard)
+        print("---------- END LlamaGuard Response ----------")
 
     print("---------- L2 - BACKDOOR GUARD ----------")
     backdoor_guard_l2 = {"flagged": False, "reason": "", "category": ""}
@@ -209,6 +216,9 @@ def run(graph, context, prompt, seconds=30):
                         print(f"  • {key}: {display_value}")
                         if value:
                             sentinel_result = sentinel(value, key)
+                            print("----- Sentinel Result -----")
+                            print(sentinel_result)
+                            print("----- End Sentinel Result -----")
                             output_summary[key] = display_value
                         else:
                             print("No value to check")
@@ -242,6 +252,9 @@ def run(graph, context, prompt, seconds=30):
                             "L2": {"flagged": False, "reason": "", "category": ""},
                             "L3": {"flagged": False, "reason": "", "category": ""},
                         }
+                        print("----- New Data -----")
+                        print(new_data)
+                        print("----- End New Data -----")
                         send_agent_data(agent_name=node_name, task=task, output=output_summary, prompt=None, sentinel_result=new_data, execution_id=execution_id,execution_time=execution_time)
                         break
                     else:
