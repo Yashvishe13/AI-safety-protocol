@@ -18,7 +18,7 @@ import shield
 class CerebrasClient:
     """Wrapper for Cerebras API client"""
 
-    def __init__(self, model: str = "llama-3.1-8b"):
+    def __init__(self, model: str = "gpt-oss-120b"):
         self.client = Cerebras(
             api_key=os.environ.get("CEREBRAS_API_KEY"),
         )
@@ -234,7 +234,7 @@ def should_continue(state: CodeGenState) -> str:
 
 # ========== Build the LangGraph ==========
 
-def create_code_generation_graph(model: str = "llama-4-scout-17b-16e-instruct") -> StateGraph:
+def create_code_generation_graph(model: str = "gpt-oss-120b") -> StateGraph:
     """Create and compile the multi-agent code generation graph"""
 
     # Initialize Cerebras client
@@ -274,10 +274,9 @@ def create_code_generation_graph(model: str = "llama-4-scout-17b-16e-instruct") 
 
     return workflow.compile()
 
-
 # ========== Main Execution Function ==========
 
-def generate_code(prompt: str, max_iterations: int = 2, model: str = "llama-4-scout-17b-16e-instruct") -> dict:
+def generate_code(prompt: str, max_iterations: int = 2, model: str = "gpt-oss-120b") -> dict:
     """
     Generate code using the multi-agent system
 
