@@ -159,6 +159,19 @@ def receive_user_command():
         print(f"❌ Error processing data: {e}")
         return jsonify({"status": "error", "error": str(e)}), 400
 
+def send_final_state(final_state, execution_id):
+    """Send final state to the API to mark execution as completed"""
+    try:
+        data = {
+            "final_state": final_state,
+            "execution_id": execution_id,
+        }
+        print(f"🏁 Sending final state to API: execution_id={execution_id}")
+        response = requests.post(f"{API_RECEIVER_URL.replace('/receive', '')}/api/executions/final_state", json=data)
+        print(f"✅ Final state API Response: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"❌ Failed to send final state: {e}")
+
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000)
@@ -246,5 +259,9 @@ def run(graph, context, prompt, seconds=30):
                     break
             time.sleep(seconds)
 
+    
+
     print(f"✅ Workflow completed after {node_count} steps.")
+    if final_state:
+        send_final_state(final_state, execution_id)
     return final_state if final_state is not None else context
