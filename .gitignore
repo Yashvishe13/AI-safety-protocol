@@ -165,7 +165,7 @@ temp/
 *.model
 *.bin
 *.h5
-
+malicious-bert-base/
 # Data files
 data/
 datasets/
