@@ -135,18 +135,18 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.route("/path-to-be-added", methods=["POST"])
+@app.route("/api/executions/<execution_id>/security/override", methods=["POST"])
 def receive_user_command():
     try:
         data = request.get_json(force=True)
         print(f"📥 Received user command data: {data}")
-        accept = data.get("accept")
+        action = data.get("action")
 
         return jsonify({
             "status": "success",
             "received": data,
             "message": "Data from user received successfully.",
-            "command": accept
+            "command": action
         }), 200
 
     except Exception as e:
@@ -202,7 +202,7 @@ def run(graph, context, prompt, seconds=1):
                     while True:
                         status_code, response = receive_user_command()
                         if status_code == 200:
-                            if response.get("command") == True:
+                            if str(response.get("command")).lower() == "accept":
                                 break
                             else:
                                 node_name = '__end__'
