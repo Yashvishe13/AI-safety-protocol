@@ -13,12 +13,18 @@ As AI agents become deeply integrated into enterprise workflows, ensuring their 
 
 Unlike existing solutions that only protect single LLMs, our framework is designed for the multi-agent future of enterprise AI adoption, providing inclusive protection for both proprietary and open-source models.
 
-## 🛡️ Three-Layer Defense System
+## 🛡️ Multi-Layer Defense System
 
 ### L1: Sentinel CodeGuard
 - **Regex-based code-aware protection**
 - Detects jailbreaks, prompt injection, secrets, unsafe APIs
 - Code-aware extraction to reduce false positives
+
+### Llama Guard Integration
+- **Semantic content moderation via Llama Guard**
+- Intelligent analysis of natural language content
+- 14 safety categories including malicious instructions and illegal activities
+- Powered by Meta's Llama Guard model
 
 ### L2: Sentinel Backdoor
 - **Advanced backdoor and malware detection**
@@ -44,6 +50,7 @@ Unlike existing solutions that only protect single LLMs, our framework is design
 ```
 AI Safety Protocol
 ├── L1: Sentinel CodeGuard    # Regex-first protection
+├── Llama Guard Integration   # Semantic moderation
 ├── L2: Sentinel Backdoor     # Advanced threat detection  
 └── L3: Sentinel MultiAgent   # Cerebras-powered validation
 ```
