@@ -2,20 +2,174 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Multi-Agent Code Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Safety Protocol - Multi-Agent Code Generator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
         <h1>🧠 Multi-Agent Code Generator</h1>
-        <textarea id="prompt" placeholder="Enter your coding prompt..."></textarea>
-        <button onclick="generateCode()">Generate</button>
-        <div id="live">
-            <h3>Live agent updates</h3>
-            <pre id="stream"></pre>
-        </div>
-        <pre id="output"></pre>
+                </div>
+                <div class="header-info">
+                    <div class="status-indicator" id="status-indicator">
+                        <i class="fas fa-circle"></i>
+                        <span>Ready</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Input Section -->
+            <section class="input-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-code"></i> Enter your coding prompt</h2>
+                </div>
+                
+                <div class="input-container">
+                    <div class="textarea-wrapper">
+                        <textarea 
+                            id="prompt" 
+                            placeholder="Enter your coding prompt... (e.g., 'Create a Python function to calculate fibonacci numbers with error handling')"
+                            rows="4"
+                        ></textarea>
+                        <div class="textarea-footer">
+                            <span class="char-count" id="char-count">0 characters</span>
+                            <div class="input-actions">
+                                <button type="button" class="btn btn-secondary" onclick="clearInput()">
+                                    <i class="fas fa-eraser"></i> Clear
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="generateCode()" id="generate-btn">
+                                    <i class="fas fa-magic"></i> Generate Code
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Progress Section -->
+            <section class="progress-section" id="progress-section" style="display: none;">
+                <div class="section-header">
+                    <h3><i class="fas fa-cogs"></i> Generation Progress</h3>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text">Initializing...</div>
+                </div>
+                <div class="agent-status" id="agent-status">
+                    <!-- Agent status will be populated here -->
+                </div>
+            </section>
+
+            <!-- Live Updates Section -->
+            <section class="live-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-stream"></i> Live Agent Updates</h3>
+                    <div class="section-actions">
+                        <button class="btn btn-sm btn-outline" onclick="toggleStream()" id="toggle-stream">
+                            <i class="fas fa-eye"></i> Show Details
+                        </button>
+                        <button class="btn btn-sm btn-outline" onclick="clearStream()">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                <div class="stream-container" id="stream-container">
+                    <pre id="stream" class="stream-content"></pre>
+                </div>
+            </section>
+
+            <!-- User Command Interface -->
+            <section class="command-section" id="command-section" style="display: none;">
+                <div class="section-header">
+                    <h3><i class="fas fa-pause-circle"></i> Workflow Paused - Action Required</h3>
+                    <p>Agent execution is paused. Please review the output and choose an action:</p>
+                </div>
+                <div class="command-actions">
+                    <button class="btn btn-success btn-lg" onclick="sendUserCommand('accept')" id="accept-btn">
+                        <i class="fas fa-check"></i> Accept & Continue
+                    </button>
+                    <button class="btn btn-danger btn-lg" onclick="sendUserCommand('reject')" id="reject-btn">
+                        <i class="fas fa-times"></i> Reject & Stop
+                    </button>
+                </div>
+                <div class="command-status" id="command-status">
+                    <i class="fas fa-clock"></i> Waiting for your decision...
+                </div>
+            </section>
+
+            <!-- Output Section -->
+            <section class="output-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-file-code"></i> Generated Code</h3>
+                    <div class="section-actions">
+                        <button class="btn btn-sm btn-outline" onclick="copyCode()" id="copy-btn">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                        <button class="btn btn-sm btn-outline" onclick="downloadCode()" id="download-btn">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                    </div>
+                </div>
+                <div class="output-container">
+                    <pre id="output" class="code-output">Ready to generate code...</pre>
+                </div>
+            </section>
+
+            <!-- Safety Status Section -->
+            <section class="safety-section" id="safety-section" style="display: none;">
+                <div class="section-header">
+                    <h3><i class="fas fa-shield-alt"></i> Safety Analysis</h3>
+                </div>
+                <div class="safety-grid" id="safety-grid">
+                    <!-- Safety analysis will be populated here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-info">
+                    <span>AI Safety Protocol - Multi-Layer Defense System</span>
+                </div>
+            </div>
+        </footer>
     </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- About Modal -->
+    <div class="modal" id="about-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>About AI Safety Protocol</h3>
+                <button class="modal-close" onclick="closeModal('about-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>AI Safety Protocol is a comprehensive multi-layer defense system for AI-generated code, featuring:</p>
+                <ul>
+                    <li><strong>L1 Sentinel CodeGuard:</strong> Regex-based code-aware protection</li>
+                    <li><strong>Llama Guard Integration:</strong> Semantic content moderation</li>
+                    <li><strong>L2 Sentinel Backdoor:</strong> Advanced threat detection</li>
+                    <li><strong>L3 Sentinel MultiAgent:</strong> Cerebras-powered validation</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
